@@ -109,6 +109,7 @@ class BlameEngine:
         analysis_results = []
         blamed = None
         blame_reasons = []
+        semantic_blame_applied = False
 
         for execution in self._executions:
             issues = []
@@ -151,16 +152,17 @@ class BlameEngine:
                             baseline_val = baseline_output.get(key, "")
                             if isinstance(baseline_val, str) and len(baseline_val) > 20:
                                 try:
-                                    result = pytest_llm.assert_regression(
-                                        val, baseline_val, threshold=0.75
+                                    pytest_llm.assert_regression(
+                                        output=val,
+                                        baseline=baseline_val,
+                                        threshold=0.75,
                                     )
-                                    if not result.passed:
-                                        issues.append(
-                                            f"Semantic regression on key '{key}': "
-                                            f"similarity {result.similarity:.2f} < threshold"
-                                        )
-                                except Exception as e:
-                                    logger.debug(f"pytest-llm check failed: {e}")
+                                except AssertionError as e:
+                                    blamed = execution
+                                    confidence = "high"
+                                    reason = str(e)
+                                    semantic_blame_applied = True
+                                    issues.append(f"Semantic regression: {e}")
 
             analysis = NodeAnalysis(
                 node_name=execution.node_name,
@@ -185,8 +187,8 @@ class BlameEngine:
                         break
                 break
 
-        # Priority 2: If no error, find the first node that dropped a key
-        if blamed is None and missing_keys:
+        # Priority 2: If no error and no semantic blame, find the first node that dropped a key
+        if blamed is None and missing_keys and not semantic_blame_applied:
             for execution in self._executions:
                 output_state = _deserialize_state(execution.output_state)
                 input_state = _deserialize_state(execution.input_state)
@@ -210,10 +212,11 @@ class BlameEngine:
                     break
 
         # Determine confidence and reason
-        confidence = "low"
-        reason = "No issues found"
+        if not semantic_blame_applied:
+            confidence = "low"
+            reason = "No issues found"
 
-        if blamed:
+        if blamed and not semantic_blame_applied:
             if blamed.status == "error":
                 confidence = "high"
                 reason = f"Node '{blamed.node_name}' raised an error: {blamed.error_message}"

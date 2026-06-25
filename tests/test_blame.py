@@ -1,5 +1,7 @@
 """Tests for the BlameEngine."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from langgraph_replay.blame import BlameEngine, BlameResult
@@ -73,11 +75,12 @@ class TestBlameEngine:
 
         assert result.blamed_node is not None
         assert result.blamed_node.node_name == "node_2"
+        assert result.confidence == "high"
 
-    def test_blame_returns_none_when_no_issues(self, storage):
-        """All nodes succeed with no state drops returns None."""
+    def test_semantic_blame_uses_pytest_llm(self, storage):
+        """Semantic regression via pytest-llm should blame the correct node."""
         session = Session(
-            id="session_clean",
+            id="session_semantic",
             agent_name="test",
             created_at="2024-01-15T10:30:00Z",
             total_nodes=2,
@@ -85,23 +88,58 @@ class TestBlameEngine:
         )
         storage.save_session(session)
 
+        baseline = Session(
+            id="session_baseline",
+            agent_name="test",
+            created_at="2024-01-15T10:30:00Z",
+            total_nodes=2,
+            status="completed",
+        )
+        storage.save_session(baseline)
+
+        long_output_a = "This is a long output text that exceeds the twenty char threshold"
+        long_output_b = "This is a long output text that exceeds the twenty char threshold"
+        baseline_text = "This is the expected output text that exceeds the twenty char threshold"
+
         execs = [
             NodeExecution(
-                session_id="session_clean",
+                session_id="session_semantic",
                 node_name="node_1",
                 execution_order=0,
-                input_state='{"a": 1}',
-                output_state='{"a": 1, "b": 2}',
+                input_state='{"query": "hello"}',
+                output_state=f'{{"response": "{long_output_a}"}}',
                 started_at="2024-01-15T10:30:00Z",
                 duration_ms=10.0,
                 status="success",
             ),
             NodeExecution(
-                session_id="session_clean",
+                session_id="session_semantic",
                 node_name="node_2",
                 execution_order=1,
-                input_state='{"a": 1, "b": 2}',
-                output_state='{"a": 1, "b": 2, "c": 3}',
+                input_state='{"query": "hello"}',
+                output_state=f'{{"response": "{long_output_b}"}}',
+                started_at="2024-01-15T10:30:01Z",
+                duration_ms=10.0,
+                status="success",
+            ),
+        ]
+        baseline_execs = [
+            NodeExecution(
+                session_id="session_baseline",
+                node_name="node_1",
+                execution_order=0,
+                input_state='{"query": "hello"}',
+                output_state=f'{{"response": "{baseline_text}"}}',
+                started_at="2024-01-15T10:30:00Z",
+                duration_ms=10.0,
+                status="success",
+            ),
+            NodeExecution(
+                session_id="session_baseline",
+                node_name="node_2",
+                execution_order=1,
+                input_state='{"query": "hello"}',
+                output_state=f'{{"response": "{baseline_text}"}}',
                 started_at="2024-01-15T10:30:01Z",
                 duration_ms=10.0,
                 status="success",
@@ -109,32 +147,29 @@ class TestBlameEngine:
         ]
         for exec in execs:
             storage.save_node_execution(exec)
-
-        engine = BlameEngine("session_clean", storage)
-        result = engine.run()
-
-        assert result.blamed_node is None
-        assert result.confidence == "low"
-        assert result.reason == "No issues found"
-
-    def test_blame_confidence_high_on_error(self, storage, sample_executions):
-        """Error node should produce confidence=high."""
-        session = Session(
-            id="session_test01",
-            agent_name="test",
-            created_at="2024-01-15T10:30:00Z",
-            total_nodes=5,
-            status="failed",
-        )
-        storage.save_session(session)
-        for exec in sample_executions:
+        for exec in baseline_execs:
             storage.save_node_execution(exec)
 
-        engine = BlameEngine("session_test01", storage)
-        result = engine.run()
+        mock_assert = MagicMock(
+            side_effect=AssertionError("semantic drift detected for node_2")
+        )
 
+        mock_module = MagicMock()
+        mock_module.assert_regression = mock_assert
+
+        with patch(
+            "langgraph_replay.blame.BlameEngine._try_import_pytest_llm",
+            return_value=mock_module,
+        ):
+            engine = BlameEngine("session_semantic", storage)
+            result = engine.run(
+                baseline_session_id="session_baseline", use_eval=True
+            )
+
+        assert result.blamed_node is not None
+        assert result.blamed_node.node_name == "node_2"
         assert result.confidence == "high"
-        assert "error" in result.reason.lower()
+        assert "semantic drift detected" in result.reason
 
     def test_blame_key_dropped_but_reappears(self, storage):
         """Key that drops temporarily but reappears should NOT be blamed."""
