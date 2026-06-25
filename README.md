@@ -32,6 +32,9 @@ No vendor lock-in.
 
 Just install, record, and debug.
 
+
+https://github.com/user-attachments/assets/d39895ae-77f4-4cba-95c0-85e7bbb185a8
+
 ---
 
 ## Why langgraph-replay?
