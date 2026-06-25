@@ -102,8 +102,15 @@ class BlameEngine:
         final_output = _deserialize_state(last_exec.output_state)
         final_keys = set(final_output.keys())
 
-        # Keys missing from final output
-        missing_keys = initial_keys - final_keys
+        # Collect all keys that ever appeared in any node's output
+        ever_in_output = set()
+        for execution in self._executions:
+            out = _deserialize_state(execution.output_state)
+            ever_in_output.update(out.keys())
+
+        # Keys missing from final output — only if they ever appeared
+        # in some node's output (input-only keys are not "dropped")
+        missing_keys = (initial_keys - final_keys) & ever_in_output
 
         # Build analysis for each node
         analysis_results = []
