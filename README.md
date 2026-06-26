@@ -1,420 +1,200 @@
 # langgraph-replay
 
-> Record, replay, debug, diff, and blame LangGraph agent executions.
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-32_passing-success)]()
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)]()
-[![Tests](https://img.shields.io/badge/tests-31_passing-success)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+Record, replay, debug, diff, and blame LangGraph agent executions — all from your terminal.
 
-LangGraph agents often fail in frustrating ways.
+LangGraph agents fail in frustrating ways: wrong output, missing keys, degraded quality, silent state corruption. Most observability tools show *what happened*. `langgraph-replay` answers *which node caused it and why*.
 
-The final output is wrong.
-
-A key disappears somewhere in the graph.
-
-An LLM silently degrades output quality.
-
-A downstream node crashes because an upstream node corrupted state.
-
-Most observability tools show **what happened**.
-
-`langgraph-replay` helps answer:
-
-> **Which node caused the failure, and why?**
-
-Record every node execution, inspect state transitions, replay agent runs step-by-step, compare sessions, and automatically identify the node responsible for a failure.
-
-No cloud service.
-
-No hosted backend.
-
-No vendor lock-in.
-
-Just install, record, and debug.
-
-
-https://github.com/user-attachments/assets/d39895ae-77f4-4cba-95c0-85e7bbb185a8
-
----
-
-## Why langgraph-replay?
-
-Imagine a simple agent:
-
-```text
-fetch_context
-      ↓
-summarize
-      ↓
-fact_check
-      ↓
-format_output
 ```
-
-The final response is wrong.
-
-Which node caused it?
-
-* Was context lost?
-* Did a node mutate state incorrectly?
-* Did an LLM produce a degraded response?
-* Did quality drop even though the structure remained valid?
-
-Without replay tooling, debugging becomes manual guesswork.
-
-`langgraph-replay` turns every LangGraph execution into a searchable, replayable timeline.
-
----
-
-## Features
-
-### Automatic Recording
-
-Attach a recorder and capture every node execution automatically.
-
-Recorded metadata includes:
-
-* Node name
-* Input state
-* Output state
-* Execution duration
-* Status
-* Error message
-* LLM call count
-
-All sessions are stored locally in SQLite.
-
-```text
-~/.langgraph_replay/replays.db
+# Your 6-node agent produced wrong output
+# Which node caused it?
+# Langfuse: shows flat spans — no answer
+# LangSmith: shows a tree — no answer
+# langgraph-replay:
+#   langgraph-replay blame session_abc
+#   → Blamed: summarize (confidence: high)
+#   → Key 'context' dropped and never recovered
 ```
-
----
-
-### Replay Agent Executions
-
-Inspect every node exactly as it executed.
-
-```bash
-langgraph-replay show <session_id>
-```
-
-View:
-
-* State before execution
-* State after execution
-* Metadata
-* Timing information
-* Errors
-
----
-
-### Interactive TUI Debugger
-
-Launch a terminal debugger powered by Textual.
-
-```bash
-langgraph-replay debug <session_id>
-```
-
-Features:
-
-* Node explorer
-* State inspection
-* State diff viewer
-* Metadata panel
-* Keyboard navigation
-
-```text
-┌──────────────┬──────────────────────┬──────────────┐
-│ Node List    │ State Diff Viewer    │ Metadata     │
-├──────────────┼──────────────────────┼──────────────┤
-│ fetch        │ context added        │ duration     │
-│ summarize    │ summary generated    │ llm calls    │
-│ fact_check   │ claims verified      │ status       │
-│ format       │ final output         │ error info   │
-└──────────────┴──────────────────────┴──────────────┘
-```
-
-Hotkeys:
-
-| Key | Action         |
-| --- | -------------- |
-| ↑ ↓ | Navigate nodes |
-| D   | State diff     |
-| B   | Blame overlay  |
-| Q   | Quit           |
-
----
-
-### Session Diffing
-
-Compare two executions node-by-node.
-
-```bash
-langgraph-replay diff session_a session_b
-```
-
-Quickly identify:
-
-* State changes
-* Missing keys
-* Diverging outputs
-* Different execution paths
-
----
-
-### JSON Export
-
-Export executions for sharing or analysis.
-
-```bash
-langgraph-replay export <session_id>
-```
-
-Output:
-
-```json
-{
-  "session_id": "...",
-  "nodes": [...]
-}
-```
-
----
-
-## Blame Engine
-
-The core feature of the project.
-
-Instead of only showing traces, `langgraph-replay` attempts to identify the node responsible for a failure.
-
-### Structural Blame
-
-No LLM required.
-
-Pure state analysis.
-
-Tracks state evolution through the graph and identifies the first node that permanently removed information required by the final output.
-
-Example:
-
-```text
-fetch_context
-    context ✓
-
-summarize
-    context ✗
-
-fact_check
-    context missing
-
-format_output
-    failure
-```
-
-Result:
-
-```text
-Likely culprit:
-summarize
-```
-
----
-
-### Semantic Blame
-
-Structural correctness does not guarantee output quality.
-
-A node can preserve state while still degrading information.
-
-Semantic blame integrates with `pytest-llm` to compare outputs against a known-good baseline.
-
-```bash
-langgraph-replay blame \
-    bad_session \
-    --eval \
-    --baseline good_session
-```
-
-The system evaluates:
-
-* Content quality
-* Semantic drift
-* Regression severity
-* Information loss
-
-Example:
-
-```text
-Node: format_output
-
-Regression score: 0.60
-Threshold: 0.75
-
-Explanation:
-Output discusses stock market trends instead of
-the requested HNSW indexing algorithm.
-```
-
-This catches failures that structural analysis cannot detect.
 
 ---
 
 ## Quick Start
 
-### Installation
-
 ```bash
 pip install langgraph-replay
 ```
 
-Enable semantic blame:
-
-```bash
-pip install langgraph-replay[eval]
-```
-
----
-
-### Record an Agent Run
-
 ```python
 from langgraph_replay import record_session
-from langgraph_replay import LangGraphRecorder
 
-with record_session("research-agent"):
-    graph.invoke(
-        {"query": "What is HNSW indexing?"}
-    )
+with record_session("my_agent") as rec:
+    result = graph.invoke(state, config={"callbacks": [rec]})
 ```
-
-Every node execution is automatically captured.
-
----
-
-### Inspect Sessions
-
-List recent executions:
 
 ```bash
-langgraph-replay list
+langgraph-replay list                          # see sessions
+langgraph-replay blame <session_id>            # find the culprit
+langgraph-replay debug <session_id>            # TUI debugger
 ```
-
-View a session:
-
-```bash
-langgraph-replay show <session_id>
-```
-
-Launch debugger:
-
-```bash
-langgraph-replay debug <session_id>
-```
-
-Run blame analysis:
-
-```bash
-langgraph-replay blame <session_id>
-```
-
----
-
-## End-to-End Demo
-
-The repository includes a complete LangGraph research agent.
-
-Graph:
-
-```text
-fetch_context
-      ↓
-summarize
-      ↓
-fact_check
-      ↓
-format_output
-```
-
-Scenario:
-
-1. Record a successful execution
-2. Inject a bug into the summarize node
-3. Record a failed execution
-4. Compare both runs
-5. Run structural blame
-6. Run semantic blame
-7. Identify the root cause automatically
-
-The demo shows the complete debugging workflow from failure detection to root-cause identification.
 
 ---
 
 ## Architecture
 
-```text
+```
 LangGraph Agent
-        │
-        ▼
-LangGraphRecorder
-        │
-        ▼
-SQLite Session Store
-        │
-        ├─────────────► Replay Engine
-        │
-        ├─────────────► Diff Engine
-        │
-        ├─────────────► TUI Debugger
-        │
-        ▼
-Blame Engine
-   │
-   ├── Structural Analysis
-   │
-   └── Semantic Analysis
-           │
-           ▼
-       pytest-llm
+       │
+       ▼
+LangGraphRecorder (LangChain callback)
+       │ captures state before/after every node
+       ▼
+SQLite (~/.langgraph_replay/replays.db)
+       │
+       ├── langgraph-replay list
+       ├── langgraph-replay show <session>
+       ├── langgraph-replay diff <a> <b>
+       ├── langgraph-replay blame <session>     ← structural
+       ├── langgraph-replay blame --eval        ← semantic via pytest-llm
+       └── langgraph-replay debug <session>     ← TUI debugger
 ```
 
 ---
 
-## Project Status
+## Recording API
 
-Current implementation includes:
+### Direct usage
 
-* LangGraph callback recorder
-* SQLite-backed storage
-* Session replay
-* Session diffing
-* Interactive Textual debugger
-* Structural blame engine
-* Semantic blame engine
-* JSON export
-* Rich CLI
-* 31 automated tests
+```python
+from langgraph_replay import LangGraphRecorder
+
+recorder = LangGraphRecorder(session_name="research_agent")
+result = graph.invoke(state, config={"callbacks": [recorder]})
+session_id = recorder.finalize()
+```
+
+### Context manager
+
+```python
+from langgraph_replay import record_session
+
+with record_session("research_agent") as rec:
+    result = graph.invoke(state, config={"callbacks": [rec]})
+# Session auto-saved on exit
+```
+
+### Async support
+
+```python
+from langgraph_replay import arecord_session
+
+async with arecord_session("my_agent") as rec:
+    result = await graph.ainvoke(state, config={"callbacks": [rec]})
+print(rec.session_id)
+```
 
 ---
 
-## The Bigger Vision
+## CLI Commands
 
-Modern agent systems are becoming increasingly complex.
+| Command | Description |
+|---------|-------------|
+| `langgraph-replay list` | List recent recorded sessions |
+| `langgraph-replay show <id>` | Show session details and node executions |
+| `langgraph-replay debug <id>` | Launch TUI debugger |
+| `langgraph-replay diff <a> <b>` | Compare two sessions side-by-side |
+| `langgraph-replay blame <id>` | Identify which node caused a failure |
+| `langgraph-replay export <id>` | Export session to JSON |
+| `langgraph-replay delete <id>` | Delete a session |
 
-As graphs grow larger, failures become harder to diagnose.
+---
 
-The goal of `langgraph-replay` is to bring software-style debugging to AI agents:
+## Blame Modes
 
-* Record every execution
-* Reproduce failures
-* Compare runs
-* Identify root causes
-* Explain failures
+### Structural (instant, no API call)
 
-without requiring proprietary observability platforms.
+Pure state analysis. Tracks keys through the graph and finds the first node that permanently dropped information required by the final output.
+
+```bash
+langgraph-replay blame session_abc
+```
+
+```
+Blame Analysis
+Blamed Node: summarize
+Reason: Key 'context' dropped and never recovered
+Confidence: HIGH
+
+OK fetch_context
+X  summarize ← BLAMED
+OK fact_check
+OK format_output
+```
+
+### Semantic (requires `pytest-llm`)
+
+Compares text outputs against a known-good baseline using `assert_regression`. Catches quality degradation that structural analysis misses.
+
+```bash
+pip install langgraph-replay[eval]
+langgraph-replay blame session_abc --eval --baseline session_xyz
+```
+
+If no `--baseline` is provided, the most recent completed session for the same agent is used automatically.
+
+```
+Blame Analysis
+Blamed Node: format_output
+Reason: Semantic regression on key 'answer': similarity 0.62 < threshold
+Confidence: HIGH
+```
+
+---
+
+## pytest-llm Integration
+
+```bash
+pip install langgraph-replay[eval]
+```
+
+```bash
+langgraph-replay blame session_abc --eval
+langgraph-replay blame session_abc --eval --baseline session_xyz
+```
+
+Requires a [pytest-llm](https://github.com/pytest-dev/pytest-llm) compatible setup. The `--eval` flag enables semantic comparison of text outputs across sessions.
+
+---
+
+## Async Support
+
+`graph.invoke()` is fully supported out of the box.
+
+For `graph.ainvoke()`, use the async context manager:
+
+```python
+from langgraph_replay import arecord_session
+
+async with arecord_session("my_agent") as rec:
+    result = await graph.ainvoke(state, config={"callbacks": [rec]})
+
+print(rec.session_id)
+```
+
+The `LangGraphRecorder` callback handler works with both sync and async LangGraph invocations.
+
+---
+
+## Limitations
+
+- **SQLite**: Fine for development and single-machine use. Not recommended for multi-machine teams or high-concurrency production.
+- **Callback API**: Relies on LangChain's callback handler interface. May break if LangGraph changes how nodes are invoked between versions.
+- **Nested subgraphs**: Experimental. Subgraph node names may collide with parent graph nodes.
 
 ---
 
 ## License
 
-MIT License.
+MIT License — see [LICENSE](LICENSE).

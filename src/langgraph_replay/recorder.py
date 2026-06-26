@@ -216,3 +216,55 @@ class record_session:
         """
         status = "failed" if exc_type is not None else "completed"
         self._recorder.finalize(status=status)
+
+
+class arecord_session:
+    """Async context manager for recording graph.ainvoke() calls.
+
+    Usage::
+
+        async with arecord_session("my_agent") as rec:
+            result = await graph.ainvoke(
+                state,
+                config={"callbacks": [rec]}
+            )
+        print(rec.session_id)
+    """
+
+    def __init__(
+        self,
+        name: str,
+        storage: Optional[ReplayStorage] = None,
+        metadata: Optional[dict] = None,
+    ):
+        """Initialize the async context manager.
+
+        Args:
+            name: Human-readable session name.
+            storage: Optional ReplayStorage instance.
+            metadata: Optional metadata dict.
+        """
+        self._recorder = LangGraphRecorder(
+            session_name=name, storage=storage, metadata=metadata
+        )
+
+    async def __aenter__(self) -> LangGraphRecorder:
+        """Enter the async context, returning the recorder."""
+        return self._recorder
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        """Exit the async context, finalizing the session.
+
+        Args:
+            exc_type: Exception type if an exception occurred.
+            exc_val: Exception value if an exception occurred.
+            exc_tb: Exception traceback if an exception occurred.
+        """
+        status = "failed" if exc_type is not None else "completed"
+        self._recorder.finalize(status=status)
+        return False
+
+    @property
+    def session_id(self) -> str:
+        """Returns the session ID for this recording."""
+        return self._recorder.session_id

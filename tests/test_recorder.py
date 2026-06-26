@@ -2,7 +2,7 @@
 
 import pytest
 
-from langgraph_replay.recorder import LangGraphRecorder, record_session
+from langgraph_replay.recorder import LangGraphRecorder, record_session, arecord_session
 
 
 class TestLangGraphRecorder:
@@ -89,3 +89,50 @@ class TestLangGraphRecorder:
         error_exec = next(e for e in executions if e.node_name == "node_b")
         assert error_exec.status == "error"
         assert "node_b failed" in error_exec.error_message
+
+
+class TestAreordSession:
+    """Tests for the async arecord_session context manager."""
+
+    @pytest.mark.asyncio
+    async def test_arecord_session_context_manager(self, storage):
+        """Use arecord_session as async context manager and verify session is saved."""
+        async with arecord_session("test_async", storage=storage) as rec:
+            # Simulate an async agent by manually firing callbacks
+            from uuid import uuid4
+            from datetime import datetime, timezone
+            import time
+
+            run_id = uuid4()
+            parent_run_id = uuid4()
+
+            rec.on_chain_start(
+                {},
+                {"messages": [], "step": 0},
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+                name="node_a",
+            )
+            rec.on_chain_end(
+                {"messages": ["a"], "step": 1},
+                run_id=run_id,
+            )
+
+        # Session should be saved after context exits
+        session = storage.get_session(rec.session_id)
+        assert session is not None
+        assert session.status == "completed"
+        assert session.agent_name == "test_async"
+        assert len(rec._node_executions) == 1
+        assert rec._node_executions[0].node_name == "node_a"
+
+    @pytest.mark.asyncio
+    async def test_arecord_session_handles_exception(self, storage):
+        """arecord_session should mark session as failed on exception."""
+        with pytest.raises(RuntimeError, match="async boom"):
+            async with arecord_session("test_async_fail", storage=storage) as rec:
+                raise RuntimeError("async boom")
+
+        session = storage.get_session(rec.session_id)
+        assert session is not None
+        assert session.status == "failed"
