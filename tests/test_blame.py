@@ -323,3 +323,85 @@ class TestBlameEngine:
         assert result.blamed_node is not None
         assert result.blamed_node.node_name == "node_2"
         assert result.confidence == "high"
+
+    def test_auto_baseline_selection(self, storage):
+        """Auto-baseline finds most recent completed session for same agent."""
+        # First session: completed, 3 nodes, all success
+        session_a = Session(
+            id="session_auto_a",
+            agent_name="auto_agent",
+            created_at="2024-01-15T10:00:00Z",
+            total_nodes=3,
+            status="completed",
+        )
+        storage.save_session(session_a)
+        for i in range(3):
+            storage.save_node_execution(NodeExecution(
+                session_id="session_auto_a",
+                node_name=f"node_{i}",
+                execution_order=i,
+                input_state=f'{{"step": {i}}}',
+                output_state=f'{{"step": {i + 1}}}',
+                started_at="2024-01-15T10:00:00Z",
+                duration_ms=10.0,
+                status="success",
+            ))
+
+        # Second session: completed, 3 nodes, one node has degraded output
+        session_b = Session(
+            id="session_auto_b",
+            agent_name="auto_agent",
+            created_at="2024-01-15T11:00:00Z",
+            total_nodes=3,
+            status="completed",
+        )
+        storage.save_session(session_b)
+        for i in range(3):
+            storage.save_node_execution(NodeExecution(
+                session_id="session_auto_b",
+                node_name=f"node_{i}",
+                execution_order=i,
+                input_state=f'{{"step": {i}}}',
+                output_state=f'{{"step": {i + 1}}}' if i != 2 else '{}',
+                started_at="2024-01-15T11:00:00Z",
+                duration_ms=10.0,
+                status="success",
+            ))
+
+        # Run blame on session_b with no baseline — should auto-select session_a
+        engine = BlameEngine("session_auto_b", storage)
+        result = engine.run(use_eval=False)
+
+        # Should run without error; structural blame finds dropped key
+        assert result.blamed_node is not None
+        assert result.blamed_node.node_name == "node_2"
+
+    def test_no_baseline_available(self, storage):
+        """Graceful fallback when no baseline session exists for the agent."""
+        session = Session(
+            id="session_no_base",
+            agent_name="unique_agent_xyz",
+            created_at="2024-01-15T10:00:00Z",
+            total_nodes=2,
+            status="completed",
+        )
+        storage.save_session(session)
+        for i in range(2):
+            storage.save_node_execution(NodeExecution(
+                session_id="session_no_base",
+                node_name=f"node_{i}",
+                execution_order=i,
+                input_state=f'{{"step": {i}}}',
+                output_state=f'{{"step": {i + 1}}}',
+                started_at="2024-01-15T10:00:00Z",
+                duration_ms=10.0,
+                status="success",
+            ))
+
+        # Run with use_eval=True but no baseline — should fall back gracefully
+        engine = BlameEngine("session_no_base", storage)
+        result = engine.run(use_eval=True)
+
+        # No structural issues, so blamed_node should be None
+        assert result.blamed_node is None
+        assert result.reason == "No issues found"

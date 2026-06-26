@@ -146,6 +146,9 @@ class ReplayStorage:
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(self.SCHEMA)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.commit()
 
     def save_session(self, session: Session) -> str:
         """Save a session record.

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from pydantic import BaseModel
+from rich.console import Console
 
 from langgraph_replay.storage import NodeExecution, ReplayStorage, _deserialize_state
 
@@ -88,6 +89,26 @@ class BlameEngine:
         pytest_llm = None
         if use_eval:
             pytest_llm = self._try_import_pytest_llm()
+
+        # Auto-baseline selection when use_eval is True but no baseline provided
+        _console = Console()
+        if baseline_session_id is None and use_eval:
+            candidates = self._storage.search_sessions(
+                agent_name=self._session.agent_name,
+                status="completed",
+            )
+            candidates = [s for s in candidates if s.id != self._session_id]
+            if candidates:
+                baseline_session_id = candidates[0].id
+                _console.print(
+                    f"[yellow]No baseline provided. Using most recent "
+                    f"completed session as baseline: {baseline_session_id}[/yellow]"
+                )
+            else:
+                _console.print(
+                    f"[yellow]No baseline session found for agent "
+                    f"'{self._session.agent_name}'. Running structural blame only.[/yellow]"
+                )
 
         baseline_execs = []
         if baseline_session_id:

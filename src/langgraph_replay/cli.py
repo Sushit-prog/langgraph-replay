@@ -215,7 +215,7 @@ def diff(session_id_a: str, session_id_b: str) -> None:
 
 @main.command()
 @click.argument("session_id")
-@click.option("--baseline", help="Baseline session ID for semantic comparison.")
+@click.option("--baseline", help="Baseline session ID. If not provided with --eval, uses most recent completed session for the same agent.")
 @click.option("--eval", "use_eval", is_flag=True, help="Use pytest-llm semantic assertions.")
 def blame(session_id: str, baseline: Optional[str], use_eval: bool) -> None:
     """Run blame analysis on a session."""
