@@ -20,7 +20,7 @@ if not os.getenv("GROQ_API_KEY"):
     sys.exit(1)
 
 from langgraph_replay import BlameEngine, record_session
-from research_agent import build_graph
+from research_agent import build_graph, fetch_context, summarize, fact_check, format_output
 
 console = Console()
 
@@ -74,7 +74,15 @@ def main():
     console.print(Panel("Step 3b -- Auto-diagnosis", style="bold blue"))
     os.environ["LLM_JUDGE_PROVIDER"] = "groq"
     os.environ["LLM_JUDGE_MODEL"] = "llama-3.3-70b-versatile"
-    engine_diag = BlameEngine(bad_id)
+    engine_diag = BlameEngine(
+        bad_id,
+        graph_nodes={
+            "fetch_context": fetch_context,
+            "summarize": summarize,
+            "fact_check": fact_check,
+            "format_output": format_output,
+        },
+    )
     diag_result = engine_diag.run(diagnose=True)
     if diag_result.diagnosis and diag_result.diagnosis.root_cause != "Diagnosis unavailable":
         diag = diag_result.diagnosis

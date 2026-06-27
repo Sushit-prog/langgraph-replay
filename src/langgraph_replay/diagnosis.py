@@ -1,5 +1,6 @@
 """Auto-diagnosis engine: explains WHY a node broke and HOW to fix it."""
 
+import inspect
 import json
 import logging
 import os
@@ -25,6 +26,7 @@ Focus on:
 - Prompt template problems
 - LLM output format issues
 - Node function logic errors
+When source code is provided, reference specific line numbers, variable names, and function calls in your fix suggestions. Point to the exact line that needs to change.
 
 Be specific and technical. Assume the developer knows Python \
 and LangGraph. Do not be generic.
@@ -68,6 +70,7 @@ class DiagnosisEngine:
         storage: Optional[ReplayStorage] = None,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        graph_nodes: dict = None,
     ):
         """Initialize the diagnosis engine.
 
@@ -85,6 +88,17 @@ class DiagnosisEngine:
         self._model = model or os.environ.get(
             "LLM_JUDGE_MODEL", DEFAULT_MODELS.get(self._provider, "gpt-4o-mini")
         )
+        self._graph_nodes = graph_nodes or {}
+
+    def _get_node_source(self, node_name: str):
+        """Gets source code of the node function."""
+        if not self._graph_nodes or node_name not in self._graph_nodes:
+            return None
+        try:
+            import inspect
+            return inspect.getsource(self._graph_nodes[node_name])
+        except (OSError, TypeError):
+            return None
 
     def diagnose(self, blame_result: BlameResult) -> DiagnosisResult:
         """Run diagnosis on a blame result.
@@ -165,6 +179,17 @@ class DiagnosisEngine:
             diff_lines.append(f"  ~ {key}: {vals.get('before')} -> {vals.get('after')}")
         diff_str = "\n".join(diff_lines) if diff_lines else "  (no changes)"
 
+        node_source = self._get_node_source(blamed_node.node_name)
+        if node_source:
+            source_section = f"""\n## Node source code
+```python
+{node_source}
+```
+
+Reference specific line numbers and variable names from the source code in your fix suggestions."""
+        else:
+            source_section = "\nSource code not available. Base suggestions on state analysis only."
+
         return f"""\
 Analyze this LangGraph node execution and explain why it caused a failure.
 
@@ -189,6 +214,7 @@ Analyze this LangGraph node execution and explain why it caused a failure.
 
 ## State Diff
 {diff_str}
+{source_section}
 
 Respond in JSON:
 {{

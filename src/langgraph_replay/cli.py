@@ -217,7 +217,7 @@ def diff(session_id_a: str, session_id_b: str) -> None:
 @click.argument("session_id")
 @click.option("--baseline", help="Baseline session ID. If not provided with --eval, uses most recent completed session for the same agent.")
 @click.option("--eval", "use_eval", is_flag=True, help="Use pytest-llm semantic assertions.")
-@click.option("--diagnose", is_flag=True, help="Generate root cause and fix suggestions via LLM.")
+@click.option("--diagnose", is_flag=True, help="Generate root cause and fix suggestions via LLM. For source-code-aware diagnosis, use BlameEngine directly with graph_nodes parameter.")
 def blame(session_id: str, baseline: Optional[str], use_eval: bool, diagnose: bool) -> None:
     """Run blame analysis on a session."""
     try:

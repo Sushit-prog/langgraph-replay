@@ -165,3 +165,67 @@ class TestDiagnosisEngine:
         assert "some text" in prompt
         assert "summary" in prompt
         assert "AI is great" in prompt
+
+    def test_diagnosis_includes_source_code(self, storage):
+        """Prompt includes source code when graph_nodes provided."""
+        def my_node(state):
+            return {"result": state.get("x", 0) + 1}
+
+        session = Session(
+            id="session_src",
+            agent_name="test",
+            created_at="2024-01-15T10:00:00Z",
+            total_nodes=1,
+            status="failed",
+        )
+        storage.save_session(session)
+
+        engine = DiagnosisEngine(
+            "session_src",
+            storage,
+            graph_nodes={"my_node": my_node},
+        )
+
+        blamed = NodeExecution(
+            session_id="session_src",
+            node_name="my_node",
+            execution_order=0,
+            input_state='{"x": 1}',
+            output_state='{}',
+            started_at="2024-01-15T10:00:00Z",
+            duration_ms=5.0,
+            status="error",
+            error_message=" KeyError",
+        )
+        from langgraph_replay.diff import compute_state_diff
+        diff = compute_state_diff({"x": 1}, {})
+        prompt = engine._build_prompt(blamed, diff, "error")
+        assert "source code" in prompt.lower() or "def " in prompt
+
+    def test_diagnosis_handles_missing_source(self, storage):
+        """Built-in function source cannot be read, returns None gracefully."""
+        engine = DiagnosisEngine(
+            "session_miss",
+            storage,
+            graph_nodes={"builtin": len},
+        )
+        result = engine._get_node_source("builtin")
+        assert result is None
+
+    def test_diagnosis_without_graph_nodes(self, storage):
+        """Prompt says source not available when graph_nodes is None."""
+        engine = DiagnosisEngine("session_nog", storage)
+        blamed = NodeExecution(
+            session_id="session_nog",
+            node_name="node_1",
+            execution_order=0,
+            input_state='{"a": 1}',
+            output_state='{}',
+            started_at="2024-01-15T10:00:00Z",
+            duration_ms=5.0,
+            status="error",
+        )
+        from langgraph_replay.diff import compute_state_diff
+        diff = compute_state_diff({"a": 1}, {})
+        prompt = engine._build_prompt(blamed, diff, "error")
+        assert "Source code not available" in prompt

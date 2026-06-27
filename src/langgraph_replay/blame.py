@@ -62,15 +62,17 @@ class BlameEngine:
             print(f"Blame: {result.blamed_node.node_name} - {result.reason}")
     """
 
-    def __init__(self, session_id: str, storage: Optional[ReplayStorage] = None):
+    def __init__(self, session_id: str, storage: Optional[ReplayStorage] = None, graph_nodes: dict = None):
         """Initialize the blame engine.
 
         Args:
             session_id: The session ID to analyze.
             storage: Optional ReplayStorage instance.
+            graph_nodes: Optional dict of graph node metadata.
         """
         self._storage = storage or ReplayStorage()
         self._session_id = session_id
+        self._graph_nodes = graph_nodes or {}
         self._session = self._storage.get_session(session_id)
         self._executions = self._storage.get_node_executions(session_id)
 
@@ -301,6 +303,7 @@ class BlameEngine:
                 diag_engine = _DiagnosisEngine(
                     session_id=self._session_id,
                     storage=self._storage,
+                    graph_nodes=self._graph_nodes,
                 )
                 result.diagnosis = diag_engine.diagnose(result)
             except Exception as e:
