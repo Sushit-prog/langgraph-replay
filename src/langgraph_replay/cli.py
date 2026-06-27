@@ -385,6 +385,40 @@ def providers(limit: int, provider: Optional[str]) -> None:
 
 
 @main.command()
+@click.argument('query')
+@click.option('--limit', default=5, help='Maximum number of results')
+@click.option('--threshold', default=0.3, help='Minimum similarity score (0-1)')
+def search(query, limit, threshold):
+    """Search sessions semantically."""
+    from langgraph_replay.search import SessionSearchEngine
+    engine = SessionSearchEngine()
+    console.print(f'[dim]Searching for: {query}[/dim]')
+    results = engine.search(query, limit=limit, threshold=threshold)
+    if not results:
+        console.print(f'[yellow]No sessions found matching \'{query}\'[/yellow]')
+        console.print('[dim]Try lowering --threshold or using different keywords[/dim]')
+        return
+    table = Table(title=f"Search Results -- '{query}'", show_lines=True)
+    table.add_column('Score', style='cyan', width=8)
+    table.add_column('Session ID', width=20)
+    table.add_column('Agent', width=20)
+    table.add_column('Status', width=12)
+    table.add_column('Nodes', width=8)
+    table.add_column('Created', width=22)
+    for result in results:
+        status_color = 'green' if result.status == 'completed' else 'red'
+        table.add_row(
+            f'{result.score:.3f}',
+            result.session_id,
+            result.agent_name,
+            f'[{status_color}]{result.status}[/{status_color}]',
+            str(result.total_nodes),
+            result.created_at[:19]
+        )
+    console.print(table)
+
+
+@main.command()
 @click.argument('agent_file')
 @click.option('--agent-name', required=True, help='Agent name used when recording sessions')
 @click.option('--sessions', default=5, help='Number of recent sessions to re-run')
