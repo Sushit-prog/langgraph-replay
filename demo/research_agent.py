@@ -1,10 +1,10 @@
-"""4-node LangGraph research agent using Groq for real LLM calls."""
+"""4-node LangGraph research agent using Mistral for real LLM calls."""
 
 import os
 from typing import TypedDict, List
 
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from langchain_mistralai import ChatMistralAI
 from langgraph.graph import StateGraph, END
 from rich.console import Console
 
@@ -24,10 +24,10 @@ class ResearchState(TypedDict):
 
 
 def _llm():
-    return ChatGroq(
-        model="llama-3.3-70b-versatile",
+    return ChatMistralAI(
+        model="mistral-small-latest",
         temperature=0,
-        api_key=os.environ["GROQ_API_KEY"],
+        api_key=os.environ["MISTRAL_API_KEY"],
     )
 
 

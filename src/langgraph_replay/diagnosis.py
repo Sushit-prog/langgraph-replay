@@ -36,6 +36,7 @@ root_cause, fix_suggestions (list of strings), confidence"""
 
 DEFAULT_MODELS = {
     "groq": "llama-3.3-70b-versatile",
+    "mistral": "mistral-small-latest",
     "openai": "gpt-4o-mini",
     "anthropic": "claude-haiku-4-5-20251001",
 }
@@ -84,7 +85,7 @@ class DiagnosisEngine:
         """
         self._storage = storage or ReplayStorage()
         self._session_id = session_id
-        self._provider = provider or os.environ.get("LLM_JUDGE_PROVIDER", "groq")
+        self._provider = provider or os.environ.get("LLM_JUDGE_PROVIDER", "mistral")
         self._model = model or os.environ.get(
             "LLM_JUDGE_MODEL", DEFAULT_MODELS.get(self._provider, "gpt-4o-mini")
         )
@@ -224,24 +225,13 @@ Respond in JSON:
 }}"""
 
     def _call_llm(self, prompt: str) -> dict:
-        """Call the configured LLM provider.
-
-        Supports groq, openai, and anthropic. Retries up to 2 times.
-
-        Args:
-            prompt: The user prompt to send.
-
-        Returns:
-            Parsed JSON dict from the LLM response.
-
-        Raises:
-            RuntimeError: If all retries fail.
-        """
-        last_error = None
+        """Call the configured LLM provider with retry and backoff."""
         for attempt in range(3):
             try:
                 if self._provider == "groq":
                     return self._call_groq(prompt)
+                elif self._provider == "mistral":
+                    return self._call_mistral(prompt)
                 elif self._provider == "openai":
                     return self._call_openai(prompt)
                 elif self._provider == "anthropic":
@@ -249,15 +239,15 @@ Respond in JSON:
                 else:
                     raise ValueError(f"Unsupported provider: {self._provider}")
             except Exception as e:
-                last_error = e
-                logger.warning(f"LLM call attempt {attempt + 1} failed: {e}")
+                if "429" in str(e) and attempt < 2:
+                    wait = 2 ** attempt
+                    time.sleep(wait)
+                    continue
                 import traceback
                 traceback.print_exc()
-                if attempt < 2:
-                    time.sleep(1 * (attempt + 1))
-
+                break
         return {
-            "root_cause": f"Diagnosis failed: {last_error}",
+            "root_cause": f"Diagnosis failed: provider={self._provider}",
             "fix_suggestions": [],
             "confidence": "low",
         }
@@ -338,4 +328,31 @@ Respond in JSON:
         )
         resp.raise_for_status()
         content = resp.json()["content"][0]["text"]
+        return json.loads(content)
+
+    def _call_mistral(self, prompt: str) -> dict:
+        """Call Mistral API."""
+        import httpx
+        api_key = os.getenv("MISTRAL_API_KEY")
+        if not api_key:
+            raise ValueError("MISTRAL_API_KEY not set")
+        response = httpx.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": self._model,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0,
+                "response_format": {"type": "json_object"}
+            },
+            timeout=30.0
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
         return json.loads(content)

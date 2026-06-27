@@ -72,8 +72,8 @@ def main():
 
     # ── Step 3b: Auto-diagnosis ──────────────────────────────────────
     console.print(Panel("Step 3b -- Auto-diagnosis", style="bold blue"))
-    os.environ["LLM_JUDGE_PROVIDER"] = "groq"
-    os.environ["LLM_JUDGE_MODEL"] = "llama-3.3-70b-versatile"
+    os.environ["LLM_JUDGE_PROVIDER"] = "mistral"
+    os.environ["LLM_JUDGE_MODEL"] = "mistral-small-latest"
     engine_diag = BlameEngine(
         bad_id,
         graph_nodes={
@@ -96,8 +96,8 @@ def main():
             console.print("[red]Diagnosis failed - check GROQ_API_KEY[/red]")
 
     # ── Step 4: Semantic blame with pytest-llm ────────────────────────
-    os.environ["LLM_JUDGE_PROVIDER"] = "groq"
-    os.environ["LLM_JUDGE_MODEL"] = "llama-3.3-70b-versatile"
+    os.environ["LLM_JUDGE_PROVIDER"] = "mistral"
+    os.environ["LLM_JUDGE_MODEL"] = "mistral-small-latest"
     console.print(Panel("Step 4 — Semantic blame (pytest-llm)", style="magenta bold"))
     engine = BlameEngine(bad_id)
     semantic = engine.run(baseline_session_id=good_id, use_eval=True)

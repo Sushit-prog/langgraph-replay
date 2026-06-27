@@ -2,7 +2,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-44_passing-success)]()
+[![Tests](https://img.shields.io/badge/tests-60_passing-success)]()
 
 Record, replay, debug, diff, and blame LangGraph agent executions — all from your terminal.
 
@@ -16,28 +16,19 @@ Neither tells you which node dropped a critical state key,
 why the output quality degraded, or what to change in your
 code to fix it.
 
-langgraph-replay does.
+langgraph-replay does. It tells you **why it broke** with
+auto-diagnosis, shows **exact line numbers** from your source
+code in fix suggestions, watches for regressions when you
+edit files, and lets you **semantically search** across all
+recorded sessions.
 
 ```
 # Your 6-node agent produced wrong output
-# Which node caused it?
-# Langfuse: shows flat spans — no answer
-# LangSmith: shows a tree — no answer
-# langgraph-replay:
-#   langgraph-replay blame session_abc
-#   → Blamed: summarize (confidence: high)
-#   → Key 'context' dropped and never recovered
+# langgraph-replay blame --diagnose session_abc
+# → Blamed: summarize (confidence: high)
+# → Why it broke: Key 'context' dropped and never recovered
+# → Fix: Remove the has_bug conditional at line 5-10
 ```
-
----
-
-## Demo
-
-
-
-https://github.com/user-attachments/assets/d90492a4-2096-44f4-9186-f14853f080e6
-
-
 
 ---
 
@@ -57,6 +48,8 @@ with record_session("my_agent") as rec:
 ```bash
 langgraph-replay list                          # see sessions
 langgraph-replay blame <session_id>            # find the culprit
+langgraph-replay blame <id> --diagnose         # + why it broke
+langgraph-replay search "summarize failed"     # semantic search
 langgraph-replay debug <session_id>            # TUI debugger
 ```
 
@@ -69,50 +62,17 @@ LangGraph Agent
        │
        ▼
 LangGraphRecorder (LangChain callback)
-       │ captures state before/after every node
+       │ captures state before/after every node + LLM stats
        ▼
 SQLite (~/.langgraph_replay/replays.db)
        │
-       ├── langgraph-replay list
-       ├── langgraph-replay show <session>
-       ├── langgraph-replay diff <a> <b>
-       ├── langgraph-replay blame <session>     ← structural
-       ├── langgraph-replay blame --eval        ← semantic via pytest-llm
-       └── langgraph-replay debug <session>     ← TUI debugger
-```
-
----
-
-## Recording API
-
-### Direct usage
-
-```python
-from langgraph_replay import LangGraphRecorder
-
-recorder = LangGraphRecorder(session_name="research_agent")
-result = graph.invoke(state, config={"callbacks": [recorder]})
-session_id = recorder.finalize()
-```
-
-### Context manager
-
-```python
-from langgraph_replay import record_session
-
-with record_session("research_agent") as rec:
-    result = graph.invoke(state, config={"callbacks": [rec]})
-# Session auto-saved on exit
-```
-
-### Async support
-
-```python
-from langgraph_replay import arecord_session
-
-async with arecord_session("my_agent") as rec:
-    result = await graph.ainvoke(state, config={"callbacks": [rec]})
-print(rec.session_id)
+       ├── langgraph-replay list / show / diff / delete / export
+       ├── langgraph-replay blame <session>        ← structural
+       ├── langgraph-replay blame --eval           ← semantic via pytest-llm
+       ├── langgraph-replay blame --diagnose       ← LLM root cause analysis
+       ├── langgraph-replay search <query>         ← semantic search
+       ├── langgraph-replay watch <file>           ← regression watchdog
+       └── langgraph-replay debug <session>        ← TUI debugger
 ```
 
 ---
@@ -126,23 +86,25 @@ print(rec.session_id)
 | `langgraph-replay debug <id>` | Launch TUI debugger |
 | `langgraph-replay diff <a> <b>` | Compare two sessions side-by-side |
 | `langgraph-replay blame <id>` | Identify which node caused a failure |
+| `langgraph-replay blame <id> --diagnose` | Root cause analysis with fix suggestions |
+| `langgraph-replay blame <id> --eval` | Semantic blame via pytest-llm |
+| `langgraph-replay search <query>` | Semantic search across all sessions |
+| `langgraph-replay watch <file>` | Watch agent file, auto-detect regressions |
+| `langgraph-replay providers` | LLM provider performance leaderboard |
 | `langgraph-replay export <id>` | Export session to JSON |
 | `langgraph-replay delete <id>` | Delete a session |
 
 ---
 
-## Blame Modes
+## Blame + Auto-Diagnosis
 
-### Structural (instant, no API call)
-
-Pure state analysis. Tracks keys through the graph and finds the first node that permanently dropped information required by the final output.
+### Structural blame (instant, no API call)
 
 ```bash
 langgraph-replay blame session_abc
 ```
 
 ```
-Blame Analysis
 Blamed Node: summarize
 Reason: Key 'context' dropped and never recovered
 Confidence: HIGH
@@ -153,57 +115,113 @@ OK fact_check
 OK format_output
 ```
 
-### Semantic (requires `pytest-llm`)
+### Diagnosis with source code references
 
-Compares text outputs against a known-good baseline using `assert_regression`. Catches quality degradation that structural analysis misses.
+```bash
+langgraph-replay blame session_abc --diagnose
+```
+
+```
+Why it broke:
+The node failed due to a hardcoded fallback in the summarize
+function (line 5-10) that triggers when state.get('has_bug')
+is True, bypassing the LLM entirely.
+
+How to fix it:
+[1] Remove the has_bug conditional check (lines 5-10)
+[2] Replace hardcoded fallback with try-catch around LLM call
+[3] Validate context key before use
+```
+
+### Semantic blame (requires pytest-llm)
 
 ```bash
 pip install langgraph-replay[eval]
 langgraph-replay blame session_abc --eval --baseline session_xyz
 ```
 
-If no `--baseline` is provided, the most recent completed session for the same agent is used automatically.
-
-```
-Blame Analysis
-Blamed Node: format_output
-Reason: Semantic regression on key 'answer': similarity 0.62 < threshold
-Confidence: HIGH
-```
-
 ---
 
-## pytest-llm Integration
+## Regression Watchdog
+
+Watch your agent file for changes. When you edit, it
+automatically re-runs saved sessions and alerts on regressions.
 
 ```bash
-pip install langgraph-replay[eval]
+langgraph-replay watch research_agent.py --agent-name research_agent
 ```
 
-```bash
-langgraph-replay blame session_abc --eval
-langgraph-replay blame session_abc --eval --baseline session_xyz
-```
-
-Requires a [pytest-llm](https://github.com/pytest-dev/pytest-llm) compatible setup. The `--eval` flag enables semantic comparison of text outputs across sessions.
-
----
-
-## Async Support
-
-`graph.invoke()` is fully supported out of the box.
-
-For `graph.ainvoke()`, use the async context manager:
+Or use programmatically:
 
 ```python
-from langgraph_replay import arecord_session
+from langgraph_replay import RegressionWatchdog
 
-async with arecord_session("my_agent") as rec:
-    result = await graph.ainvoke(state, config={"callbacks": [rec]})
-
-print(rec.session_id)
+watchdog = RegressionWatchdog(
+    agent_file="research_agent.py",
+    agent_name="research_agent",
+    rerun_fn=my_custom_rerun,
+    sessions=5,
+)
+watchdog.start()  # blocks until Ctrl+C
 ```
 
-The `LangGraphRecorder` callback handler works with both sync and async LangGraph invocations.
+---
+
+## Semantic Search
+
+Find sessions by meaning, not just IDs.
+
+```bash
+langgraph-replay search "sessions where summarize failed"
+langgraph-replay search "runs with context errors" --threshold 0.2
+```
+
+```python
+from langgraph_replay import SessionSearchEngine
+
+engine = SessionSearchEngine()
+results = engine.search("agent dropped state key")
+for r in results:
+    print(f"{r.session_id} (score: {r.score:.3f})")
+```
+
+---
+
+## Provider Leaderboard
+
+Track which LLM provider performs best across all runs.
+
+```bash
+langgraph-replay providers
+```
+
+```
+Provider/Model                 | Avg Latency | Total Cost | Runs | Badge
+groq/llama-3.3-70b-versatile   | 1172ms      | $0.0524    | 135  | FAST
+mistral/mistral-small-latest   | 5234ms      | $0.0154    | 14   | VALUE
+```
+
+---
+
+## Recording API
+
+```python
+# Direct usage
+from langgraph_replay import LangGraphRecorder
+recorder = LangGraphRecorder(session_name="my_agent")
+result = graph.invoke(state, config={"callbacks": [recorder]})
+recorder.finalize()
+
+# Context manager
+from langgraph_replay import record_session
+with record_session("my_agent") as rec:
+    result = graph.invoke(state, config={"callbacks": [rec]})
+
+# Async
+from langgraph_replay import arecord_session
+async with arecord_session("my_agent") as rec:
+    result = await graph.ainvoke(state, config={"callbacks": [rec]})
+```
 
 ---
 
