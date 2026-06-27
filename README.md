@@ -33,7 +33,11 @@ langgraph-replay does.
 
 ## Demo
 
-![langgraph-replay demo](assets/demo.gif)
+
+
+https://github.com/user-attachments/assets/d90492a4-2096-44f4-9186-f14853f080e6
+
+
 
 ---
 
