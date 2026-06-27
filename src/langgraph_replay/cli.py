@@ -385,6 +385,67 @@ def providers(limit: int, provider: Optional[str]) -> None:
 
 
 @main.command()
+@click.argument('agent_file')
+@click.option('--agent-name', required=True, help='Agent name used when recording sessions')
+@click.option('--sessions', default=5, help='Number of recent sessions to re-run')
+@click.option('--interval', default=2.0, help='Poll interval in seconds')
+def watch(agent_file, agent_name, sessions, interval):
+    """Watch an agent file for changes and detect regressions."""
+    import hashlib
+    import time
+    from pathlib import Path
+    from langgraph_replay.storage import ReplayStorage
+
+    storage = ReplayStorage()
+    agent_path = Path(agent_file)
+
+    def file_hash():
+        try:
+            return hashlib.sha256(agent_path.read_bytes()).hexdigest()
+        except FileNotFoundError:
+            return ''
+
+    console.print(f'[green]Watching {agent_file} for changes...[/green]')
+    console.print('[dim]Press Ctrl+C to stop[/dim]')
+
+    last_hash = file_hash()
+
+    try:
+        while True:
+            time.sleep(interval)
+            current_hash = file_hash()
+            if current_hash != last_hash:
+                last_hash = current_hash
+                console.print(f'\n[yellow]Change detected in {agent_file}[/yellow]')
+                from langgraph_replay.blame import BlameEngine
+                sessions_list = storage.search_sessions(
+                    agent_name=agent_name, status='completed'
+                )[:sessions]
+                if not sessions_list:
+                    console.print(f'[yellow]No sessions found for agent \'{agent_name}\'[/yellow]')
+                    continue
+                regressions = 0
+                for sess in sessions_list:
+                    engine = BlameEngine(sess.id, storage)
+                    result = engine.run()
+                    if result.blamed_node:
+                        regressions += 1
+                        console.print(
+                            f'[red]ISSUE in {sess.id}: '
+                            f'{result.blamed_node.node_name} -- '
+                            f'{result.reason}[/red]'
+                        )
+                    else:
+                        console.print(f'[green]OK: {sess.id}[/green]')
+                if regressions:
+                    console.print(f'[red bold]{regressions} issue(s) found.[/red bold]')
+                else:
+                    console.print('[green bold]All sessions clean.[/green bold]')
+    except KeyboardInterrupt:
+        console.print('\n[yellow]Watch stopped.[/yellow]')
+
+
+@main.command()
 @click.argument("session_id")
 @click.confirmation_option(prompt="Delete session? This cannot be undone.")
 def delete(session_id: str) -> None:
