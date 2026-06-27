@@ -23,7 +23,6 @@ dependencies = [
     "rich>=13.0",
     "textual>=0.50.0",
     "pydantic>=2.0",
-    "numpy>=1.20.0",
 ]
 
 [project.optional-dependencies]

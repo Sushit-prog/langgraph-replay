@@ -3,7 +3,6 @@
 import json
 from typing import Optional
 
-import numpy as np
 from pydantic import BaseModel
 
 from langgraph_replay.storage import ReplayStorage, Session
@@ -36,6 +35,7 @@ def _embed(text: str) -> list[float]:
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Cosine similarity between two vectors."""
+    import numpy as np
     a = np.array(a)
     b = np.array(b)
     norm_a = np.linalg.norm(a)
