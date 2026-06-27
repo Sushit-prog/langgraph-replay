@@ -29,6 +29,11 @@ recorded sessions.
 # → Why it broke: Key 'context' dropped and never recovered
 # → Fix: Remove the has_bug conditional at line 5-10
 ```
+## Demo
+
+
+https://github.com/user-attachments/assets/7a62ccdc-a364-4aef-a25f-deb1de2c06b7
+
 
 ---
 
