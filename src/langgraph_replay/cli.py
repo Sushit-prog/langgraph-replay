@@ -217,7 +217,8 @@ def diff(session_id_a: str, session_id_b: str) -> None:
 @click.argument("session_id")
 @click.option("--baseline", help="Baseline session ID. If not provided with --eval, uses most recent completed session for the same agent.")
 @click.option("--eval", "use_eval", is_flag=True, help="Use pytest-llm semantic assertions.")
-def blame(session_id: str, baseline: Optional[str], use_eval: bool) -> None:
+@click.option("--diagnose", is_flag=True, help="Generate root cause and fix suggestions via LLM.")
+def blame(session_id: str, baseline: Optional[str], use_eval: bool, diagnose: bool) -> None:
     """Run blame analysis on a session."""
     try:
         storage = _get_storage()
@@ -229,7 +230,7 @@ def blame(session_id: str, baseline: Optional[str], use_eval: bool) -> None:
         storage.close()
 
         engine = BlameEngine(session_id)
-        result = engine.run(baseline_session_id=baseline, use_eval=use_eval)
+        result = engine.run(baseline_session_id=baseline, use_eval=use_eval, diagnose=diagnose)
 
         # Build blame output
         lines = []
@@ -253,6 +254,25 @@ def blame(session_id: str, baseline: Optional[str], use_eval: bool) -> None:
             content = "[bold green]No issues found[/bold green]\n\n" + content
 
         console.print(Panel(content, title="Blame Analysis", border_style="red" if result.blamed_node else "green"))
+
+        # Print diagnosis if available
+        if result.diagnosis:
+            diag = result.diagnosis
+            if diag.root_cause and diag.root_cause != "No issues detected":
+                console.print(Panel(
+                    diag.root_cause,
+                    title="Why it broke",
+                    border_style="yellow",
+                ))
+            if diag.fix_suggestions:
+                fixes = "\n".join(
+                    f"[{i + 1}] {s}" for i, s in enumerate(diag.fix_suggestions)
+                )
+                console.print(Panel(
+                    fixes,
+                    title="How to fix it",
+                    border_style="green",
+                ))
     except SystemExit:
         raise
     except Exception as e:
@@ -288,6 +308,77 @@ def export(session_id: str, output: Optional[str]) -> None:
         console.print(f"[green]Exported to {output_path}[/green]")
     except SystemExit:
         raise
+    except Exception as e:
+        console.print(Panel(f"[red]Error: {e}[/red]", title="Error", border_style="red"))
+        sys.exit(1)
+
+
+@main.command()
+@click.option("--limit", default=50, help="Number of recent runs to analyze.")
+@click.option("--provider", default=None, help="Filter by provider name.")
+def providers(limit: int, provider: Optional[str]) -> None:
+    """Show provider performance leaderboard."""
+    try:
+        storage = _get_storage()
+        summaries = storage.get_provider_leaderboard(limit=limit)
+        storage.close()
+
+        if not summaries:
+            console.print("[yellow]No provider data yet. Run some agents first.[/yellow]")
+            console.print("[dim]Provider stats are collected automatically during recording.[/dim]")
+            return
+
+        table = Table(title=f"Provider Leaderboard -- last {limit} runs")
+        table.add_column("Provider + Model")
+        table.add_column("Avg Latency", justify="right")
+        table.add_column("P95 Latency", justify="right")
+        table.add_column("Avg Quality", justify="right")
+        table.add_column("Total Cost", justify="right")
+        table.add_column("Runs", justify="right")
+        table.add_column("Badge")
+
+        for s in summaries:
+            row_style = ""
+            badge = ""
+            if s.recommendation == "best_latency":
+                row_style = "green"
+                badge = "[green]FAST[/green]"
+            elif s.recommendation == "best_quality":
+                row_style = "blue"
+                badge = "[blue]QUALITY[/blue]"
+            elif s.recommendation == "best_value":
+                row_style = "yellow"
+                badge = "[yellow]VALUE[/yellow]"
+
+            quality_str = f"{s.avg_quality_score:.4f}" if s.avg_quality_score is not None else "-"
+            table.add_row(
+                f"{s.provider}/{s.model}",
+                f"{s.avg_latency_ms:.1f}ms",
+                f"{s.p95_latency_ms:.1f}ms",
+                quality_str,
+                f"${s.total_cost_usd:.6f}",
+                str(s.run_count),
+                badge,
+                style=row_style,
+            )
+
+        console.print(table)
+
+        # Recommendations panel
+        lines = []
+        fastest = next((s for s in summaries if s.recommendation == "best_latency"), None)
+        if fastest:
+            lines.append(f"Best for speed: {fastest.provider}/{fastest.model} ({fastest.avg_latency_ms:.1f}ms avg)")
+        best_q = next((s for s in summaries if s.recommendation == "best_quality"), None)
+        if best_q:
+            lines.append(f"Best for quality: {best_q.provider}/{best_q.model} (score: {best_q.avg_quality_score:.4f})")
+        best_v = next((s for s in summaries if s.recommendation == "best_value"), None)
+        if best_v:
+            per_run = best_v.total_cost_usd / best_v.run_count if best_v.run_count else 0
+            lines.append(f"Best value: {best_v.provider}/{best_v.model} (${per_run:.6f} per run)")
+
+        if lines:
+            console.print(Panel("\n".join(lines), title="Recommendations", border_style="cyan"))
     except Exception as e:
         console.print(Panel(f"[red]Error: {e}[/red]", title="Error", border_style="red"))
         sys.exit(1)

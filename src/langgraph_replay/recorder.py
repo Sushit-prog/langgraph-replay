@@ -9,9 +9,26 @@ from uuid import uuid4
 
 from langchain_core.callbacks.base import BaseCallbackHandler
 
-from langgraph_replay.storage import NodeExecution, ReplayStorage, Session, _serialize_state
+from langgraph_replay.storage import (
+    NodeExecution,
+    ProviderStat,
+    ReplayStorage,
+    Session,
+    _serialize_state,
+)
 
 logger = logging.getLogger(__name__)
+
+# Token cost per million tokens: (input_per_m, output_per_m)
+MODEL_COSTS = {
+    "groq/llama-3.3-70b-versatile": (0.59, 0.79),
+    "groq/llama-3-8b-instruct": (0.05, 0.08),
+    "openai/gpt-4o-mini": (0.15, 0.60),
+    "openai/gpt-4o": (2.50, 10.00),
+    "anthropic/claude-haiku-4-5-20251001": (0.25, 1.25),
+    "anthropic/claude-sonnet-4-6": (3.00, 15.00),
+}
+DEFAULT_COST = (1.00, 1.00)
 
 
 class LangGraphRecorder(BaseCallbackHandler):
@@ -50,6 +67,10 @@ class LangGraphRecorder(BaseCallbackHandler):
         self._execution_order: int = 0
         self._node_executions: list[NodeExecution] = []
         self._start_time: Optional[float] = None
+        self._provider_stats: list[ProviderStat] = []
+        self._llm_start_times: dict[Any, float] = {}
+        self._llm_prompts: dict[Any, list[str]] = {}
+        self._current_node_name: str = "unknown"
 
     @property
     def session_id(self) -> str:
@@ -83,6 +104,7 @@ class LangGraphRecorder(BaseCallbackHandler):
                 "start_time": time.perf_counter(),
             }
         )
+        self._current_node_name = node_name
         if self._start_time is None:
             self._start_time = time.perf_counter()
 
@@ -145,6 +167,86 @@ class LangGraphRecorder(BaseCallbackHandler):
         except Exception as e:
             logger.warning(f"Failed to save node execution: {e}")
 
+    def on_llm_start(
+        self,
+        serialized: dict,
+        prompts: list[str],
+        *,
+        run_id: Any,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        """Called when an LLM call starts inside a node."""
+        self._llm_start_times[run_id] = time.perf_counter()
+        self._llm_prompts[run_id] = prompts
+
+    def on_llm_end(
+        self,
+        response: Any,
+        *,
+        run_id: Any,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        """Called when an LLM call completes. Records provider stats."""
+        start = self._llm_start_times.pop(run_id, time.perf_counter())
+        prompts = self._llm_prompts.pop(run_id, [])
+        latency_ms = (time.perf_counter() - start) * 1000
+
+        # Extract model name
+        model_name = "unknown"
+        if hasattr(response, "llm_output") and response.llm_output:
+            model_name = response.llm_output.get("model_name", "unknown")
+
+        # Determine provider from model name
+        provider = self._detect_provider(model_name)
+
+        # Extract token usage
+        input_tokens = 0
+        output_tokens = 0
+        if hasattr(response, "llm_output") and response.llm_output:
+            usage = response.llm_output.get("token_usage", {})
+            input_tokens = usage.get("prompt_tokens", 0)
+            output_tokens = usage.get("completion_tokens", 0)
+
+        # Estimate tokens if not available
+        if input_tokens == 0 and prompts:
+            input_tokens = sum(len(p) // 4 for p in prompts)
+        if output_tokens == 0 and hasattr(response, "generations"):
+            for gen_list in response.generations:
+                for gen in gen_list:
+                    output_tokens += len(gen.text) // 4 if hasattr(gen, "text") else 0
+
+        # Calculate cost
+        cost_key = f"{provider}/{model_name}"
+        input_cost_per_m, output_cost_per_m = MODEL_COSTS.get(cost_key, DEFAULT_COST)
+        cost_usd = (input_tokens * input_cost_per_m + output_tokens * output_cost_per_m) / 1_000_000
+
+        stat = ProviderStat(
+            session_id=self._session_id,
+            node_name=self._current_node_name,
+            provider=provider,
+            model=model_name,
+            latency_ms=round(latency_ms, 2),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=round(cost_usd, 8),
+            recorded_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._provider_stats.append(stat)
+
+    @staticmethod
+    def _detect_provider(model_name: str) -> str:
+        """Detect LLM provider from model name."""
+        lower = model_name.lower()
+        if "gpt" in lower or "o1" in lower or "o3" in lower:
+            return "openai"
+        if "claude" in lower:
+            return "anthropic"
+        if any(k in lower for k in ("llama", "mixtral", "gemma")):
+            return "groq"
+        return "unknown"
+
     def finalize(
         self, final_output: Any = None, status: str = "completed"
     ) -> str:
@@ -172,6 +274,14 @@ class LangGraphRecorder(BaseCallbackHandler):
             self._storage.save_session(session)
         except Exception as e:
             logger.warning(f"Failed to save session: {e}")
+
+        # Save provider stats
+        for stat in self._provider_stats:
+            try:
+                self._storage.save_provider_stat(stat)
+            except Exception as e:
+                logger.warning(f"Failed to save provider stat: {e}")
+
         return self._session_id
 
 

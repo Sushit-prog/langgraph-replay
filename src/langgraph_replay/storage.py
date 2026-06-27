@@ -98,6 +98,51 @@ class NodeExecution(BaseModel):
         }
 
 
+class ProviderStat(BaseModel):
+    """Represents a single LLM provider call statistics."""
+
+    id: Optional[int] = None
+    session_id: str
+    node_name: str
+    provider: str
+    model: str
+    latency_ms: float
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    quality_score: Optional[float] = None
+    recorded_at: str = ""
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "session_id": self.session_id,
+            "node_name": self.node_name,
+            "provider": self.provider,
+            "model": self.model,
+            "latency_ms": self.latency_ms,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost_usd": self.cost_usd,
+            "quality_score": self.quality_score,
+            "recorded_at": self.recorded_at,
+        }
+
+
+class ProviderSummary(BaseModel):
+    """Aggregated provider statistics for leaderboard."""
+
+    provider: str
+    model: str
+    avg_latency_ms: float
+    avg_quality_score: Optional[float] = None
+    total_cost_usd: float
+    run_count: int
+    p95_latency_ms: float
+    recommendation: str = ""
+
+
 class ReplayStorage:
     """SQLite-backed storage for LangGraph replay sessions and node executions."""
 
@@ -124,6 +169,21 @@ class ReplayStorage:
         status TEXT,
         error_message TEXT,
         llm_calls INT,
+        FOREIGN KEY (session_id) REFERENCES sessions(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_stats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT,
+        node_name TEXT,
+        provider TEXT,
+        model TEXT,
+        latency_ms FLOAT,
+        input_tokens INT,
+        output_tokens INT,
+        cost_usd FLOAT,
+        quality_score FLOAT,
+        recorded_at TEXT,
         FOREIGN KEY (session_id) REFERENCES sessions(id)
     );
     """
@@ -331,6 +391,134 @@ class ReplayStorage:
             )
             for row in rows
         ]
+
+    def save_provider_stat(self, stat: ProviderStat) -> None:
+        """Save one provider stat record.
+
+        Args:
+            stat: ProviderStat object to save.
+        """
+        self._conn.execute(
+            "INSERT INTO provider_stats (session_id, node_name, provider, model, latency_ms, input_tokens, output_tokens, cost_usd, quality_score, recorded_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                stat.session_id,
+                stat.node_name,
+                stat.provider,
+                stat.model,
+                stat.latency_ms,
+                stat.input_tokens,
+                stat.output_tokens,
+                stat.cost_usd,
+                stat.quality_score,
+                stat.recorded_at,
+            ),
+        )
+        self._conn.commit()
+
+    def get_provider_stats(
+        self, provider: Optional[str] = None, limit: int = 50
+    ) -> list[ProviderStat]:
+        """Return provider stats, optionally filtered by provider.
+
+        Args:
+            provider: Filter by provider name.
+            limit: Max rows to return.
+
+        Returns:
+            List of ProviderStat objects ordered by recorded_at desc.
+        """
+        query = "SELECT * FROM provider_stats"
+        params: list[Any] = []
+        if provider:
+            query += " WHERE provider = ?"
+            params.append(provider)
+        query += " ORDER BY recorded_at DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self._conn.execute(query, params).fetchall()
+        return [
+            ProviderStat(
+                id=row["id"],
+                session_id=row["session_id"],
+                node_name=row["node_name"],
+                provider=row["provider"],
+                model=row["model"],
+                latency_ms=row["latency_ms"],
+                input_tokens=row["input_tokens"],
+                output_tokens=row["output_tokens"],
+                cost_usd=row["cost_usd"],
+                quality_score=row["quality_score"],
+                recorded_at=row["recorded_at"] or "",
+            )
+            for row in rows
+        ]
+
+    def get_provider_leaderboard(self, limit: int = 50) -> list[ProviderSummary]:
+        """Aggregate provider stats into a leaderboard.
+
+        Groups by provider + model, computes averages and p95 latency.
+
+        Args:
+            limit: Max rows to return.
+
+        Returns:
+            List of ProviderSummary ordered by avg_latency_ms ascending.
+        """
+        rows = self._conn.execute(
+            """SELECT provider, model,
+                      AVG(latency_ms) as avg_latency,
+                      AVG(quality_score) as avg_quality,
+                      SUM(cost_usd) as total_cost,
+                      COUNT(*) as run_count
+               FROM provider_stats
+               GROUP BY provider, model
+               ORDER BY avg_latency ASC"""
+        ).fetchall()
+
+        summaries: list[ProviderSummary] = []
+        for row in rows:
+            # Calculate p95 latency for this provider/model
+            p95_row = self._conn.execute(
+                """SELECT latency_ms FROM provider_stats
+                   WHERE provider = ? AND model = ?
+                   ORDER BY latency_ms ASC""",
+                (row["provider"], row["model"]),
+            ).fetchall()
+            latencies = [r["latency_ms"] for r in p95_row]
+            p95_idx = max(0, int(len(latencies) * 0.95) - 1)
+            p95 = latencies[p95_idx] if latencies else 0.0
+
+            summaries.append(ProviderSummary(
+                provider=row["provider"],
+                model=row["model"],
+                avg_latency_ms=round(row["avg_latency"], 2),
+                avg_quality_score=round(row["avg_quality"], 4) if row["avg_quality"] is not None else None,
+                total_cost_usd=round(row["total_cost"], 6),
+                run_count=row["run_count"],
+                p95_latency_ms=round(p95, 2),
+            ))
+
+        # Assign recommendations
+        if summaries:
+            # best_latency
+            fastest = min(summaries, key=lambda s: s.avg_latency_ms)
+            fastest.recommendation = "best_latency"
+
+            # best_quality
+            with_quality = [s for s in summaries if s.avg_quality_score is not None]
+            if with_quality:
+                best_q = max(with_quality, key=lambda s: s.avg_quality_score)
+                best_q.recommendation = "best_quality"
+
+            # best_value (quality / cost ratio)
+            with_value = [s for s in summaries if s.avg_quality_score is not None and s.total_cost_usd > 0]
+            if with_value:
+                best_v = max(with_value, key=lambda s: s.avg_quality_score / s.total_cost_usd)
+                if best_v.recommendation != "best_quality":
+                    best_v.recommendation = "best_value"
+
+        return summaries
 
     def close(self) -> None:
         """Close the database connection."""

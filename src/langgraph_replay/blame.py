@@ -9,6 +9,10 @@ from rich.console import Console
 
 from langgraph_replay.storage import NodeExecution, ReplayStorage, _deserialize_state
 
+# Lazy import for diagnosis — resolved at call time to avoid circular import
+DiagnosisEngine = None
+DiagnosisResult = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +34,7 @@ class BlameResult(BaseModel):
     reason: str = ""
     confidence: str = "low"
     analysis: list[NodeAnalysis] = []
+    diagnosis: Optional[Any] = None
 
 
 class BlameEngine:
@@ -73,12 +78,14 @@ class BlameEngine:
         self,
         baseline_session_id: Optional[str] = None,
         use_eval: bool = False,
+        diagnose: bool = False,
     ) -> BlameResult:
         """Run blame analysis on the session.
 
         Args:
             baseline_session_id: If provided, enables semantic comparison.
             use_eval: If True and pytest-llm installed, uses semantic blame.
+            diagnose: If True and blamed_node found, run LLM diagnosis.
 
         Returns:
             BlameResult with blamed node, reason, confidence, and analysis.
@@ -280,12 +287,26 @@ class BlameEngine:
                         )
                 reason = reason_parts[0] if reason_parts else f"Node '{blamed.node_name}' is suspect"
 
-        return BlameResult(
+        result = BlameResult(
             blamed_node=blamed,
             reason=reason,
             confidence=confidence,
             analysis=analysis_results,
         )
+
+        # Run diagnosis if requested and a blamed node was found
+        if diagnose and blamed is not None:
+            try:
+                from langgraph_replay.diagnosis import DiagnosisEngine as _DiagnosisEngine
+                diag_engine = _DiagnosisEngine(
+                    session_id=self._session_id,
+                    storage=self._storage,
+                )
+                result.diagnosis = diag_engine.diagnose(result)
+            except Exception as e:
+                logger.warning(f"Diagnosis failed: {e}")
+
+        return result
 
     def _try_import_pytest_llm(self) -> Optional[Any]:
         """Attempt to import pytest_llm.assertions.

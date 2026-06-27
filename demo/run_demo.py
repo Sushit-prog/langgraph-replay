@@ -7,9 +7,13 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 
 load_dotenv()
+
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 if not os.getenv("GROQ_API_KEY"):
     print("[ERROR] GROQ_API_KEY not set in .env")
@@ -66,6 +70,23 @@ def main():
     else:
         console.print("No structural issues found.")
 
+    # ── Step 3b: Auto-diagnosis ──────────────────────────────────────
+    console.print(Panel("Step 3b -- Auto-diagnosis", style="bold blue"))
+    os.environ["LLM_JUDGE_PROVIDER"] = "groq"
+    os.environ["LLM_JUDGE_MODEL"] = "llama-3.3-70b-versatile"
+    engine_diag = BlameEngine(bad_id)
+    diag_result = engine_diag.run(diagnose=True)
+    if diag_result.diagnosis and diag_result.diagnosis.root_cause != "Diagnosis unavailable":
+        diag = diag_result.diagnosis
+        console.print(Panel(diag.root_cause, title="Why it broke", style="yellow"))
+        for i, fix in enumerate(diag.fix_suggestions, 1):
+            console.print(f"[green][{i}][/green] {fix}")
+    else:
+        if diag_result.diagnosis:
+            console.print(f"[red]Root cause: {diag_result.diagnosis.root_cause}[/red]")
+        else:
+            console.print("[red]Diagnosis failed - check GROQ_API_KEY[/red]")
+
     # ── Step 4: Semantic blame with pytest-llm ────────────────────────
     os.environ["LLM_JUDGE_PROVIDER"] = "groq"
     os.environ["LLM_JUDGE_MODEL"] = "llama-3.3-70b-versatile"
@@ -89,6 +110,44 @@ def main():
             theme="monokai",
         )
     )
+
+    # ── Step 6: Provider leaderboard ──────────────────────────────────
+    console.print(Panel("Step 6 -- Provider leaderboard", style="bold blue"))
+    from langgraph_replay.storage import ReplayStorage
+    storage = ReplayStorage()
+    leaderboard = storage.get_provider_leaderboard(limit=50)
+    storage.close()
+
+    if not leaderboard:
+        console.print("[yellow]No provider data yet -- "
+                      "run more agents to populate.[/yellow]")
+    else:
+        table = Table(title="Provider Leaderboard")
+        table.add_column("Provider/Model", min_width=30)
+        table.add_column("Avg Latency")
+        table.add_column("Avg Quality")
+        table.add_column("Total Cost")
+        table.add_column("Runs")
+        table.add_column("Badge")
+
+        for entry in leaderboard:
+            badge = entry.recommendation.replace("_", " ").upper() \
+                    if entry.recommendation else ""
+            color = "green" if entry.recommendation == "best_latency" \
+                    else "blue" if entry.recommendation == "best_quality" \
+                    else "yellow" if entry.recommendation == "best_value" \
+                    else "white"
+            table.add_row(
+                f"{entry.provider}/{entry.model}",
+                f"{entry.avg_latency_ms:.0f}ms",
+                f"{entry.avg_quality_score:.2f}"
+                    if entry.avg_quality_score else "N/A",
+                f"${entry.total_cost_usd:.4f}",
+                str(entry.run_count),
+                f"[{color}]{badge}[/{color}]",
+                style=color if entry.recommendation else ""
+            )
+        console.print(table)
 
 
 if __name__ == "__main__":

@@ -2,11 +2,21 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-32_passing-success)]()
+[![Tests](https://img.shields.io/badge/tests-44_passing-success)]()
 
 Record, replay, debug, diff, and blame LangGraph agent executions — all from your terminal.
 
-LangGraph agents fail in frustrating ways: wrong output, missing keys, degraded quality, silent state corruption. Most observability tools show *what happened*. `langgraph-replay` answers *which node caused it and why*.
+---
+
+Your LangGraph agent failed. Which node caused it? Why?
+How do you fix it?
+
+Langfuse shows you flat spans. LangSmith shows you a tree.
+Neither tells you which node dropped a critical state key,
+why the output quality degraded, or what to change in your
+code to fix it.
+
+langgraph-replay does.
 
 ```
 # Your 6-node agent produced wrong output
@@ -18,6 +28,12 @@ LangGraph agents fail in frustrating ways: wrong output, missing keys, degraded 
 #   → Blamed: summarize (confidence: high)
 #   → Key 'context' dropped and never recovered
 ```
+
+---
+
+## Demo
+
+![langgraph-replay demo](assets/demo.gif)
 
 ---
 
