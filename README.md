@@ -12,6 +12,7 @@
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.9+"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License: MIT"></a>
   <a href="#"><img src="https://img.shields.io/badge/tests-141_passing-brightgreen?style=flat-square" alt="Tests"></a>
+  <a href="https://deepwiki.com/Sushit-prog/AgentTrack"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/pip install-langgraph--replay-blue?style=flat-square" alt="Install"></a>
   <a href="#roadmap"><img src="https://img.shields.io/badge/status-7 phases shipped-orange?style=flat-square" alt="Status"></a>
 </p>
