@@ -1,0 +1,52 @@
+{
+  "session": {
+    "id": "regressed-run-001",
+    "agent_name": "test-agent",
+    "created_at": "2026-01-02T00:00:00",
+    "total_nodes": 3,
+    "status": "completed",
+    "final_output": "Order processed with NaN",
+    "metadata": {}
+  },
+  "executions": [
+    {
+      "id": 1,
+      "session_id": "regressed-run-001",
+      "node_name": "node_fetch_price",
+      "execution_order": 1,
+      "input_state": "{\"item\": \"widget\"}",
+      "output_state": "{\"price\": 42.00, \"currency\": \"USD\"}",
+      "started_at": "2026-01-02T00:00:00",
+      "duration_ms": 150.5,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 1
+    },
+    {
+      "id": 2,
+      "session_id": "regressed-run-001",
+      "node_name": "node_calculate_total",
+      "execution_order": 2,
+      "input_state": "{\"price\": 42.00}",
+      "output_state": "{\"total\": NaN, \"formatted\": \"Total: $NaN\"}",
+      "started_at": "2026-01-02T00:00:01",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 3,
+      "session_id": "regressed-run-001",
+      "node_name": "node_send_confirmation",
+      "execution_order": 3,
+      "input_state": "{\"total\": NaN}",
+      "output_state": "{\"status\": \"sent\", \"message_id\": \"msg-123\"}",
+      "started_at": "2026-01-02T00:00:02",
+      "duration_ms": 200.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ]
+}

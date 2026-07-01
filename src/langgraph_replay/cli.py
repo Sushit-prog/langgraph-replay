@@ -14,6 +14,9 @@ from langgraph_replay.blame import BlameEngine
 from langgraph_replay.diff import compute_session_diff, _deserialize_state
 from langgraph_replay.storage import ReplayStorage
 
+from agenttrace.annotations.cli import annotate
+from agenttrace.watchdog.cli import baseline, watchdog
+
 console = Console()
 
 
@@ -27,6 +30,11 @@ def _get_storage() -> ReplayStorage:
 def main() -> None:
     """LangGraph Replay: Record, replay, and debug LangGraph agent executions."""
     pass
+
+
+main.add_command(annotate)
+main.add_command(watchdog)
+main.add_command(baseline)
 
 
 @main.command()

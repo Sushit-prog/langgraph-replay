@@ -1,0 +1,69 @@
+# AgentTrace Watchdog — Example CI Workflow
+#
+# This is a TEMPLATE for end users. Customize the agent invocation step
+# with your actual agent entrypoint. The watchdog step is ready to use
+# once you have:
+#   1. A pinned baseline run (agenttrace baseline set <run_id>)
+#   2. Annotations on the baseline run (agenttrace annotate add ...)
+#
+# Exit codes:
+#   0 = no regression detected (check passes)
+#   1 = regression detected (check fails)
+#   2 = usage/config error (check errors)
+
+name: AgentTrace Regression Watch
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: pip install -e .
+
+      # -------------------------------------------------------
+      # CUSTOMIZE THIS STEP: Run your agent to produce a new trace.
+      # The run ID must match what langgraph-replay records.
+      # Example:
+      #   python my_agent.py --input "test query" 2>&1
+      # Then extract the run_id from the output or trace store.
+      # -------------------------------------------------------
+      - name: Run agent (template — replace with your entrypoint)
+        run: |
+          echo "TODO: Replace this step with your actual agent invocation."
+          echo "The agent should produce a trace with a known run_id."
+          echo "For example: python my_agent.py --input 'test query'"
+          exit 1  # Remove this line once you add your agent.
+
+      # -------------------------------------------------------
+      # WATCHDOG STEP: This is the regression gate.
+      # --quiet suppresses the table for cleaner CI logs.
+      # --output writes JSON for downstream consumption.
+      # -------------------------------------------------------
+      - name: Run regression watchdog
+        run: |
+          agenttrace watch "$NEW_RUN_ID" \
+            --baseline "$BASELINE_RUN_ID" \
+            --quiet \
+            --output watchdog-report.json
+        env:
+          # Set these in your repo's Settings > Secrets and variables > Actions
+          BASELINE_RUN_ID: ${{ vars.AGENTTRACE_BASELINE_RUN_ID }}
+          NEW_RUN_ID: ${{ vars.AGENTTRACE_NEW_RUN_ID }}
+
+      - name: Upload watchdog report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchdog-report
+          path: watchdog-report.json

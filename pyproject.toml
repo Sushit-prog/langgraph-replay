@@ -31,10 +31,11 @@ eval = ["pytest-llm>=0.1.0"]
 
 [project.scripts]
 langgraph-replay = "langgraph_replay.cli:main"
+agenttrace = "agenttrace.annotations.cli:annotate"
 
 [project.urls]
 Homepage = "https://github.com/Sushit-prog/langgraph-replay"
 Repository = "https://github.com/Sushit-prog/langgraph-replay"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "agenttrace/tests"]
