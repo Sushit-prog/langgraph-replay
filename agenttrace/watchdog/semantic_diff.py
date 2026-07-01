@@ -4,12 +4,12 @@ Thin layer over Phase 3's embeddings (embed(), cosine_similarity()) that
 determines whether two output strings are semantically equivalent even if
 they differ textually.
 
-Fallback behavior: non-string outputs (dicts, lists, numbers) fall back to
-exact-match comparison. This is a documented limitation — embedding a
-stringified dict produces meaningless similarity scores, so we don't attempt it.
+Fallback behavior: non-string outputs (dicts, lists, numbers, bools, None)
+fall back to exact-match comparison. Only genuine str values are embedded.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from agenttrace.loopdetect.embeddings import cosine_similarity, embed
 
@@ -28,6 +28,15 @@ class SemanticDiffResult:
     similarity_score: float
     is_match: bool  # True if similarity >= threshold
     method: str  # "semantic" or "fallback_exact"
+
+
+def _is_non_text(value: Any) -> bool:
+    """Check if a value is non-text (not a genuine str).
+
+    Returns True for dicts, lists, ints, floats, bools, None — anything
+    that should NOT be embedded. Only genuine str instances pass through.
+    """
+    return not isinstance(value, str)
 
 
 def _is_plain_text(value: str) -> bool:
@@ -63,40 +72,49 @@ def _is_plain_text(value: str) -> bool:
 
 
 def semantic_match(
-    baseline_output: str,
-    new_output: str,
+    baseline_output: Any,
+    new_output: Any,
     threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
 ) -> SemanticDiffResult:
     """Compare two outputs semantically, with fallback for non-text content.
 
+    Non-text values (dict, list, int, float, bool, None) are compared via
+    exact equality. Only genuine str values are embedded and scored.
+
     Args:
-        baseline_output: The baseline step's output (raw JSON string from trace).
-        new_output: The new run's step output.
+        baseline_output: The baseline step's output (any type).
+        new_output: The new run's step output (any type).
         threshold: Similarity threshold (default 0.90).
 
     Returns:
         SemanticDiffResult with similarity score, match verdict, and method used.
     """
-    # If outputs are exactly equal, no need for semantic comparison
-    if baseline_output == new_output:
-        # Determine method based on content type
-        method = "semantic" if _is_plain_text(baseline_output) else "fallback_exact"
+    # Type mismatch or non-string: exact match only
+    if _is_non_text(baseline_output) or _is_non_text(new_output):
+        is_match = baseline_output == new_output
         return SemanticDiffResult(
-            similarity_score=1.0,
-            is_match=True,
-            method=method,
-        )
-
-    # Check if outputs are suitable for semantic comparison
-    # Fall back to exact match for structured/non-text content
-    if not _is_plain_text(baseline_output) or not _is_plain_text(new_output):
-        return SemanticDiffResult(
-            similarity_score=0.0,
-            is_match=False,
+            similarity_score=1.0 if is_match else 0.0,
+            is_match=is_match,
             method="fallback_exact",
         )
 
-    # Perform semantic comparison
+    # Both are strings — check if they look like structured data
+    if not _is_plain_text(baseline_output) or not _is_plain_text(new_output):
+        is_match = baseline_output == new_output
+        return SemanticDiffResult(
+            similarity_score=1.0 if is_match else 0.0,
+            is_match=is_match,
+            method="fallback_exact",
+        )
+
+    # Both are genuine plain text — perform semantic comparison
+    if baseline_output == new_output:
+        return SemanticDiffResult(
+            similarity_score=1.0,
+            is_match=True,
+            method="semantic",
+        )
+
     vec_a = embed(baseline_output)
     vec_b = embed(new_output)
     score = cosine_similarity(vec_a, vec_b)

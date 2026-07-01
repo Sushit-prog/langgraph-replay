@@ -177,7 +177,10 @@ def compare_runs(
                         semantic_note = None
                 else:
                     finding_type = FindingType.REGRESSION
-                    semantic_note = f"similarity={sem_result.similarity_score:.2f}"
+                    if sem_result.method == "fallback_exact":
+                        semantic_note = "exact-match: non-text field"
+                    else:
+                        semantic_note = f"similarity={sem_result.similarity_score:.2f}"
             else:
                 # Exact comparison (default, unchanged behavior)
                 if baseline_out == new_out:

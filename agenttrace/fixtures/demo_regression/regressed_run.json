@@ -1,0 +1,65 @@
+{
+  "session": {
+    "id": "demo-regressed-001",
+    "agent_name": "support-agent",
+    "created_at": "2026-01-02T00:00:00",
+    "total_nodes": 4,
+    "status": "completed",
+    "final_output": "Refund of $49.99 denied for order #7891",
+    "metadata": {}
+  },
+  "executions": [
+    {
+      "id": 1,
+      "session_id": "demo-regressed-001",
+      "node_name": "parse_ticket",
+      "execution_order": 1,
+      "input_state": "{\"ticket\": \"I want a refund for order 7891\"}",
+      "output_state": "{\"order_id\": 7891, \"intent\": \"refund\", \"amount\": 49.99}",
+      "started_at": "2026-01-02T00:00:00",
+      "duration_ms": 45.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "demo-regressed-001",
+      "node_name": "check_eligibility",
+      "execution_order": 2,
+      "input_state": "{\"order_id\": 7891}",
+      "output_state": "{\"eligible\": false, \"reason\": \"Refunds require proof of product defect\", \"policy\": \"Refunds only for defective products with photographic evidence within 14 days\"}",
+      "started_at": "2026-01-02T00:00:01",
+      "duration_ms": 80.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 3,
+      "session_id": "demo-regressed-001",
+      "node_name": "process_refund",
+      "execution_order": 3,
+      "input_state": "{\"order_id\": 7891, \"amount\": 49.99, \"eligible\": false}",
+      "output_state": "{\"status\": \"denied\", \"refund_id\": null, \"message\": \"Refund of $49.99 denied for order #7891\"}",
+      "started_at": "2026-01-02T00:00:02",
+      "duration_ms": 150.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 4,
+      "session_id": "demo-regressed-001",
+      "node_name": "send_notification",
+      "execution_order": 4,
+      "input_state": "{\"refund_id\": null, \"message\": \"Refund of $49.99 denied for order #7891\"}",
+      "output_state": "{\"email_sent\": true, \"notification_id\": \"notif-8822\"}",
+      "started_at": "2026-01-02T00:00:03",
+      "duration_ms": 100.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ]
+}

@@ -112,3 +112,68 @@ class TestSemanticDiff:
         result = semantic_match("42.00", "43.00")
         assert result.method == "fallback_exact"
         assert result.is_match is False
+
+    def test_dict_vs_dict_exact_match(self):
+        """Dict vs different dict -> exact-match path, no embed() call."""
+        from unittest.mock import patch
+        baseline = {"key": "value1", "nested": {"a": 1}}
+        new = {"key": "value2", "nested": {"a": 2}}
+
+        with patch("agenttrace.watchdog.semantic_diff.embed") as mock_embed:
+            result = semantic_match(baseline, new)
+            mock_embed.assert_not_called()
+
+        assert result.method == "fallback_exact"
+        assert result.is_match is False
+
+    def test_identical_dicts_no_embed(self):
+        """Identical dicts -> unchanged, no embed() call."""
+        from unittest.mock import patch
+        baseline = {"key": "value", "items": [1, 2, 3]}
+        new = {"key": "value", "items": [1, 2, 3]}
+
+        with patch("agenttrace.watchdog.semantic_diff.embed") as mock_embed:
+            result = semantic_match(baseline, new)
+            mock_embed.assert_not_called()
+
+        assert result.method == "fallback_exact"
+        assert result.is_match is True
+
+    def test_string_paraphrase_uses_embed(self):
+        """String vs paraphrased string -> embed() called, similarity computed."""
+        from unittest.mock import patch
+        clear_cache()
+        with patch("agenttrace.watchdog.semantic_diff.embed", wraps=__import__("agenttrace.watchdog.semantic_diff", fromlist=["embed"]).embed) as mock_embed:
+            result = semantic_match("Order approved", "The order has been approved")
+            assert mock_embed.called
+
+        assert result.method == "semantic"
+        assert result.similarity_score > 0.8
+
+    def test_type_mismatch_fallback(self):
+        """String baseline, dict new value -> exact-match fallback, reported as changed."""
+        baseline = "some text"
+        new = {"key": "value"}
+        result = semantic_match(baseline, new)
+        assert result.method == "fallback_exact"
+        assert result.is_match is False
+
+    def test_int_and_float_non_text(self):
+        """Int and float values -> exact-match fallback."""
+        result_int = semantic_match(42, 42)
+        assert result_int.method == "fallback_exact"
+        assert result_int.is_match is True
+
+        result_float = semantic_match(3.14, 3.14)
+        assert result_float.method == "fallback_exact"
+        assert result_float.is_match is True
+
+    def test_bool_and_none_non_text(self):
+        """Bool and None values -> exact-match fallback."""
+        result_bool = semantic_match(True, True)
+        assert result_bool.method == "fallback_exact"
+        assert result_bool.is_match is True
+
+        result_none = semantic_match(None, None)
+        assert result_none.method == "fallback_exact"
+        assert result_none.is_match is True

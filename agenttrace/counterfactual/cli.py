@@ -25,12 +25,13 @@ def counterfactual():
 @click.option("--baseline", required=True, help="Baseline run ID.")
 @click.option("--graph", required=True, help="Module path to graph builder (e.g. 'my_agent:build_graph').")
 @click.option("--thread-id", required=True, help="Thread ID of the new run to fork from.")
-@click.option("--step", required=True, type=int, help="Execution order of the upstream step to test.")
-@click.option("--field", required=True, help="Field path from Phase 5 divergence report (e.g. 'tool_calls[0].output').")
-@click.option("--category", required=True, type=click.Choice(["tool_output", "retrieved_context"]), help="Category of the divergence.")
-@click.option("--baseline-value", required=True, help="The baseline value to substitute (JSON string).")
-@click.option("--new-value", required=True, help="The new run's current value (for display).")
-@click.option("--node-name", required=True, help="Node name of the upstream step.")
+@click.option("--from-divergence", default=None, type=click.Path(exists=True), help="Load divergence from upstream report JSON (alternative to manual flags).")
+@click.option("--step", default=None, type=int, help="Execution order of the upstream step to test.")
+@click.option("--field", default=None, help="Field path from Phase 5 divergence report (e.g. 'tool_calls[0].output').")
+@click.option("--category", default=None, type=click.Choice(["tool_output", "retrieved_context"]), help="Category of the divergence.")
+@click.option("--baseline-value", default=None, help="The baseline value to substitute (JSON string).")
+@click.option("--new-value", default=None, help="The new run's current value (for display).")
+@click.option("--node-name", default=None, help="Node name of the upstream step.")
 @click.option("--threshold", default=0.85, type=float, help="Semantic similarity threshold (default: 0.85).")
 @click.option("--output", "-o", default=None, help="Write JSON report to file.")
 def test_counterfactual(
@@ -38,43 +39,76 @@ def test_counterfactual(
     baseline: str,
     graph: str,
     thread_id: str,
-    step: int,
-    field: str,
-    category: str,
-    baseline_value: str,
-    new_value: str,
-    node_name: str,
+    from_divergence: Optional[str],
+    step: Optional[int],
+    field: Optional[str],
+    category: Optional[str],
+    baseline_value: Optional[str],
+    new_value: Optional[str],
+    node_name: Optional[str],
     threshold: float,
     output: Optional[str],
 ):
     """Test if a specific upstream divergence causally explains a regression.
 
-    Requires explicit --step, --field, and --category naming exactly which
-    upstream divergence to test (matching a field_path from a prior --upstream report).
+    Use --from-divergence to load from a prior --upstream report, or provide
+    manual flags (--step, --field, --category, --baseline-value, --new-value, --node-name).
     """
-    # Parse the values from JSON strings
-    try:
-        parsed_baseline_value = json.loads(baseline_value)
-    except json.JSONDecodeError:
-        parsed_baseline_value = baseline_value
+    # Validate: cannot use both --from-divergence and manual flags
+    manual_flags_provided = any([step, field, category, baseline_value, new_value, node_name])
+    if from_divergence and manual_flags_provided:
+        console.print("[red]Error: cannot use --from-divergence with manual flags. Use one or the other.[/red]")
+        sys.exit(2)
 
-    try:
-        parsed_new_value = json.loads(new_value)
-    except json.JSONDecodeError:
-        parsed_new_value = new_value
+    if not from_divergence and not manual_flags_provided:
+        console.print("[red]Error: must provide either --from-divergence or manual flags (--step, --field, etc.).[/red]")
+        sys.exit(2)
 
-    # Build the divergence object
-    divergence = UpstreamDivergence(
-        step_id=str(step),
-        node_name=node_name,
-        category=category,
-        field_path=field,
-        changed=True,
-        similarity_score=None,
-        baseline_value=parsed_baseline_value,
-        new_value=parsed_new_value,
-        note="User-specified divergence for counterfactual test",
-    )
+    # Load divergence from file or manual flags
+    provenance_note = None
+    if from_divergence:
+        with open(from_divergence) as f:
+            div_data = json.load(f)
+
+        # The report may contain multiple divergences; pick the first changed one
+        # or accept a single divergence object
+        if "upstream_divergences" in div_data:
+            # It's a full watchdog report — find first changed divergence
+            changed_divs = []
+            for finding in div_data.get("findings", []):
+                for d in finding.get("upstream_divergences", []):
+                    if d.get("changed", False):
+                        changed_divs.append(d)
+            if not changed_divs:
+                console.print("[red]Error: no changed upstream divergences found in report.[/red]")
+                sys.exit(2)
+            div_data = changed_divs[0]
+
+        divergence = UpstreamDivergence.from_counterfactual_input(div_data)
+        provenance_note = f"substituted value sourced from upstream divergence report: {from_divergence}"
+    else:
+        # Manual flags path
+        try:
+            parsed_baseline_value = json.loads(baseline_value)
+        except (json.JSONDecodeError, TypeError):
+            parsed_baseline_value = baseline_value
+
+        try:
+            parsed_new_value = json.loads(new_value)
+        except (json.JSONDecodeError, TypeError):
+            parsed_new_value = new_value
+
+        divergence = UpstreamDivergence(
+            step_id=str(step),
+            node_name=node_name,
+            category=category,
+            field_path=field,
+            changed=True,
+            similarity_score=None,
+            baseline_value=parsed_baseline_value,
+            new_value=parsed_new_value,
+            note="User-specified divergence for counterfactual test",
+        )
 
     # Build a mock regression finding for the check
     class MockFinding:
@@ -82,18 +116,21 @@ def test_counterfactual(
             self.node_name = node_name
             self.new_output = new_output
 
-    # We need to get the baseline output from the divergence context
-    # For now, use the node_name to identify what we're testing
+    parsed_new_value = divergence.new_value
+    parsed_baseline_value = divergence.baseline_value
+
     regression_finding = MockFinding(
-        node_name=node_name,
+        node_name=divergence.node_name,
         new_output=parsed_new_value if isinstance(parsed_new_value, str) else json.dumps(parsed_new_value),
     )
 
-    # Get baseline output - this should be the original good output
-    # We'll use the baseline_value as a proxy for what the output should be
     baseline_output = parsed_baseline_value if isinstance(parsed_baseline_value, str) else json.dumps(parsed_baseline_value)
 
-    console.print(f"\n[bold]Testing: does baseline's value at \"{node_name}\" (step {step}) explain the regression?[/bold]\n")
+    # Print provenance if loaded from file
+    if provenance_note:
+        console.print(f"[dim][counterfactual] {provenance_note}[/dim]")
+
+    console.print(f"\n[bold]Testing: does baseline's value at \"{divergence.node_name}\" (step {divergence.step_id}) explain the regression?[/bold]\n")
 
     try:
         result = run_counterfactual_test(
@@ -114,7 +151,7 @@ def test_counterfactual(
     console.print(f"\n[dim](replacing new run's value:)[/dim]")
     console.print(f"  {str(parsed_new_value)[:200]}")
 
-    console.print(f"\n[bold]Replaying forward from step {step}...[/bold]")
+    console.print(f"\n[bold]Replaying forward from step {divergence.step_id}...[/bold]")
     console.print(f"Replayed output: {result.replayed_output[:200]!r}")
     console.print(f"Baseline output: {result.baseline_output[:200]!r}")
     console.print(f"Similarity to baseline: {result.similarity_to_baseline:.2f} (threshold: {threshold})")

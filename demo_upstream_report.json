@@ -1,0 +1,54 @@
+{
+  "baseline_run_id": "demo-baseline-001",
+  "new_run_id": "demo-regressed-001",
+  "regression_count": 3,
+  "structural_change_count": 0,
+  "has_regression": true,
+  "diff_strategy": "exact",
+  "findings": [
+    {
+      "step_id": "check_eligibility",
+      "node_name": "check_eligibility",
+      "judgment": "correct",
+      "finding_type": "regression",
+      "baseline_output": "{\"eligible\": true, \"reason\": \"Order placed within 30-day window\", \"policy\": \"Full refund for orders placed within 30 days\"}",
+      "new_output": "{\"eligible\": false, \"reason\": \"Refunds require proof of product defect\", \"policy\": \"Refunds only for defective products with photographic evidence within 14 days\"}",
+      "annotation_note": "Eligibility check accurate",
+      "semantic_note": null,
+      "upstream_divergences": []
+    },
+    {
+      "step_id": "parse_ticket",
+      "node_name": "parse_ticket",
+      "judgment": "correct",
+      "finding_type": "unchanged",
+      "baseline_output": "{\"order_id\": 7891, \"intent\": \"refund\", \"amount\": 49.99}",
+      "new_output": "{\"order_id\": 7891, \"intent\": \"refund\", \"amount\": 49.99}",
+      "annotation_note": "Ticket parsed correctly",
+      "semantic_note": null,
+      "upstream_divergences": []
+    },
+    {
+      "step_id": "process_refund",
+      "node_name": "process_refund",
+      "judgment": "correct",
+      "finding_type": "regression",
+      "baseline_output": "{\"status\": \"approved\", \"refund_id\": \"REF-4455\", \"message\": \"Refund of $49.99 approved for order #7891\"}",
+      "new_output": "{\"status\": \"denied\", \"refund_id\": null, \"message\": \"Refund of $49.99 denied for order #7891\"}",
+      "annotation_note": "Refund processed correctly",
+      "semantic_note": null,
+      "upstream_divergences": []
+    },
+    {
+      "step_id": "send_notification",
+      "node_name": "send_notification",
+      "judgment": "correct",
+      "finding_type": "regression",
+      "baseline_output": "{\"email_sent\": true, \"notification_id\": \"notif-8821\"}",
+      "new_output": "{\"email_sent\": true, \"notification_id\": \"notif-8822\"}",
+      "annotation_note": "Notification sent",
+      "semantic_note": null,
+      "upstream_divergences": []
+    }
+  ]
+}

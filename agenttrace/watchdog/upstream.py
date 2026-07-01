@@ -45,6 +45,39 @@ class UpstreamDivergence:
     new_value: Any
     note: str  # human-readable explanation
 
+    def to_counterfactual_input(self) -> dict:
+        """Serialize to a dict consumable by counterfactual replay CLI.
+
+        Produces a stable schema with all fields Phase 6 needs:
+        step_id, node_name, category, field_path, baseline_value, new_value.
+        """
+        return {
+            "step_id": self.step_id,
+            "node_name": self.node_name,
+            "category": self.category,
+            "field_path": self.field_path,
+            "baseline_value": self.baseline_value,
+            "new_value": self.new_value,
+        }
+
+    @classmethod
+    def from_counterfactual_input(cls, data: dict) -> "UpstreamDivergence":
+        """Deserialize from a dict produced by to_counterfactual_input().
+
+        Fills in changed=True and empty note since those are display-only fields.
+        """
+        return cls(
+            step_id=data["step_id"],
+            node_name=data["node_name"],
+            category=data["category"],
+            field_path=data["field_path"],
+            changed=True,
+            similarity_score=None,
+            baseline_value=data["baseline_value"],
+            new_value=data["new_value"],
+            note="Loaded from divergence report",
+        )
+
 
 def get_upstream_steps(
     executions: list, target_execution_order: int

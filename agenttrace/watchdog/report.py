@@ -35,7 +35,7 @@ def format_human_readable(result: ComparisonResult) -> str:
                 status = "unchanged"
         elif finding.finding_type == FindingType.REGRESSION:
             icon = "[red]![/red]"
-            if finding.semantic_note and "similarity=" in finding.semantic_note:
+            if finding.semantic_note:
                 status = f"REGRESSION ({finding.semantic_note})"
             else:
                 status = "REGRESSION"
