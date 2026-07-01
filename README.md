@@ -169,6 +169,9 @@ langgraph-replay loopcheck <run_id>
 
 ## Architecture
 
+<img width="2340" height="2664" alt="diagram (1)" src="https://github.com/user-attachments/assets/af03b072-32ed-41d7-b32c-cb7723e108f9" />
+
+
 ```mermaid
 graph TB
     subgraph "User Code"
