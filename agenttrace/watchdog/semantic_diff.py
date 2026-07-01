@@ -79,18 +79,20 @@ def semantic_match(
     """
     # If outputs are exactly equal, no need for semantic comparison
     if baseline_output == new_output:
+        # Determine method based on content type
+        method = "semantic" if _is_plain_text(baseline_output) else "fallback_exact"
         return SemanticDiffResult(
             similarity_score=1.0,
             is_match=True,
-            method="semantic",
+            method=method,
         )
 
     # Check if outputs are suitable for semantic comparison
     # Fall back to exact match for structured/non-text content
     if not _is_plain_text(baseline_output) or not _is_plain_text(new_output):
         return SemanticDiffResult(
-            similarity_score=1.0 if baseline_output == new_output else 0.0,
-            is_match=baseline_output == new_output,
+            similarity_score=0.0,
+            is_match=False,
             method="fallback_exact",
         )
 

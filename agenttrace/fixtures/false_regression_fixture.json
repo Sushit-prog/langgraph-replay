@@ -1,0 +1,92 @@
+{
+  "baseline_session": {
+    "id": "false-reg-baseline-001",
+    "agent_name": "order-agent",
+    "created_at": "2026-01-01T00:00:00",
+    "total_nodes": 2,
+    "status": "completed",
+    "final_output": "Order processed",
+    "metadata": {}
+  },
+  "baseline_executions": [
+    {
+      "id": 1,
+      "session_id": "false-reg-baseline-001",
+      "node_name": "node_calculate_total",
+      "execution_order": 1,
+      "input_state": "{\"price\": 42.00}",
+      "output_state": "Total: $42.00",
+      "started_at": "2026-01-01T00:00:00",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "false-reg-baseline-001",
+      "node_name": "node_send_summary",
+      "execution_order": 2,
+      "input_state": "{\"total\": 42.00}",
+      "output_state": "Order confirmed and shipped",
+      "started_at": "2026-01-01T00:00:01",
+      "duration_ms": 100.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ],
+  "baseline_annotations": [
+    {
+      "run_id": "false-reg-baseline-001",
+      "step_id": "node_calculate_total",
+      "judgment": "correct",
+      "note": "Total calculation is accurate",
+      "annotator": "tester"
+    },
+    {
+      "run_id": "false-reg-baseline-001",
+      "step_id": "node_send_summary",
+      "judgment": "correct",
+      "note": "Summary sent correctly",
+      "annotator": "tester"
+    }
+  ],
+  "new_session": {
+    "id": "false-reg-new-001",
+    "agent_name": "order-agent",
+    "created_at": "2026-01-02T00:00:00",
+    "total_nodes": 2,
+    "status": "completed",
+    "final_output": "Order processed",
+    "metadata": {}
+  },
+  "new_executions": [
+    {
+      "id": 1,
+      "session_id": "false-reg-new-001",
+      "node_name": "node_calculate_total",
+      "execution_order": 1,
+      "input_state": "{\"price\": 42.00}",
+      "output_state": "Your total comes to $42.00",
+      "started_at": "2026-01-02T00:00:00",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "false-reg-new-001",
+      "node_name": "node_send_summary",
+      "execution_order": 2,
+      "input_state": "{\"total\": 42.00}",
+      "output_state": "Your order has been confirmed and will be shipped shortly",
+      "started_at": "2026-01-02T00:00:01",
+      "duration_ms": 100.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ]
+}

@@ -50,7 +50,10 @@ def baseline_show():
 @click.option("--baseline", default=None, help="Baseline run ID. If omitted, uses the pinned baseline.")
 @click.option("--output", "-o", default="watchdog-report.json", help="JSON report output path.")
 @click.option("--quiet", is_flag=True, help="Suppress human-readable report (JSON + exit code only).")
-def watch(new_run_id: str, baseline: Optional[str], output: str, quiet: bool):
+@click.option("--semantic", is_flag=True, help="Use semantic similarity instead of exact match for output comparison.")
+@click.option("--semantic-threshold", default=0.90, type=float, help="Similarity threshold for semantic matching (default: 0.90).")
+@click.option("--upstream", is_flag=True, help="Analyze upstream steps for divergent tool outputs on regressions.")
+def watch(new_run_id: str, baseline: Optional[str], output: str, quiet: bool, semantic: bool, semantic_threshold: float, upstream: bool):
     """Compare a new run against the baseline and detect regressions.
 
     Exit codes: 0 = clean, 1 = regression detected, 2 = usage/config error.
@@ -69,7 +72,13 @@ def watch(new_run_id: str, baseline: Optional[str], output: str, quiet: bool):
 
     # Run comparison
     try:
-        result = compare_runs(baseline_run_id=baseline_id, new_run_id=new_run_id)
+        result = compare_runs(
+            baseline_run_id=baseline_id,
+            new_run_id=new_run_id,
+            diff_strategy="semantic" if semantic else "exact",
+            semantic_threshold=semantic_threshold,
+            include_upstream_divergence=upstream,
+        )
     except ValueError as e:
         console.print(f"[yellow]{e}[/yellow]")
         sys.exit(2)

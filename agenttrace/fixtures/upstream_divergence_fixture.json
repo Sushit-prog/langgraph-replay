@@ -1,0 +1,163 @@
+{
+  "baseline_session": {
+    "id": "upstream-baseline-001",
+    "agent_name": "refund-agent",
+    "created_at": "2026-01-01T00:00:00",
+    "total_nodes": 5,
+    "status": "completed",
+    "final_output": "Refund approved for order #4471",
+    "metadata": {}
+  },
+  "baseline_executions": [
+    {
+      "id": 1,
+      "session_id": "upstream-baseline-001",
+      "node_name": "parse_request",
+      "execution_order": 1,
+      "input_state": "{\"request\": \"refund for order 4471\"}",
+      "output_state": "{\"order_id\": 4471, \"intent\": \"refund\"}",
+      "started_at": "2026-01-01T00:00:00",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "upstream-baseline-001",
+      "node_name": "fetch_order_history",
+      "execution_order": 2,
+      "input_state": "{\"order_id\": 4471}",
+      "output_state": "{\"order_id\": 4471, \"total\": 150.00, \"date\": \"2025-12-15\", \"status\": \"delivered\", \"retrieved_context\": [{\"source\": \"order_db\", \"content\": \"Order #4471 placed on 2025-12-15, delivered on 2025-12-20\"}]}",
+      "started_at": "2026-01-01T00:00:01",
+      "duration_ms": 100.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 3,
+      "session_id": "upstream-baseline-001",
+      "node_name": "lookup_refund_policy",
+      "execution_order": 3,
+      "input_state": "{\"order_date\": \"2025-12-15\"}",
+      "output_state": "{\"tool_calls\": [{\"tool_name\": \"policy_lookup\", \"output\": \"All orders within 30 days receive a complete refund with no questions asked.\"}], \"eligible\": true}",
+      "started_at": "2026-01-01T00:00:02",
+      "duration_ms": 80.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 4,
+      "session_id": "upstream-baseline-001",
+      "node_name": "check_inventory",
+      "execution_order": 4,
+      "input_state": "{\"order_id\": 4471}",
+      "output_state": "{\"item_in_stock\": true, \"warehouse\": \"US-EAST\"}",
+      "started_at": "2026-01-01T00:00:03",
+      "duration_ms": 60.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 5,
+      "session_id": "upstream-baseline-001",
+      "node_name": "summarize_answer",
+      "execution_order": 5,
+      "input_state": "{\"eligible\": true, \"policy\": \"Orders under 30 days are eligible for full refund.\"}",
+      "output_state": "Refund approved for order #4471.",
+      "started_at": "2026-01-01T00:00:04",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ],
+  "baseline_annotations": [
+    {
+      "run_id": "upstream-baseline-001",
+      "step_id": "summarize_answer",
+      "judgment": "correct",
+      "note": "Summary accurate",
+      "annotator": "tester"
+    }
+  ],
+  "new_session": {
+    "id": "upstream-new-001",
+    "agent_name": "refund-agent",
+    "created_at": "2026-01-02T00:00:00",
+    "total_nodes": 5,
+    "status": "completed",
+    "final_output": "Refund denied for order #4471",
+    "metadata": {}
+  },
+  "new_executions": [
+    {
+      "id": 1,
+      "session_id": "upstream-new-001",
+      "node_name": "parse_request",
+      "execution_order": 1,
+      "input_state": "{\"request\": \"refund for order 4471\"}",
+      "output_state": "{\"order_id\": 4471, \"intent\": \"refund\"}",
+      "started_at": "2026-01-02T00:00:00",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "upstream-new-001",
+      "node_name": "fetch_order_history",
+      "execution_order": 2,
+      "input_state": "{\"order_id\": 4471}",
+      "output_state": "{\"order_id\": 4471, \"total\": 150.00, \"date\": \"2025-12-15\", \"status\": \"delivered\", \"retrieved_context\": [{\"source\": \"order_db\", \"content\": \"Order #4471 placed on 2025-12-15, delivered on 2025-12-20\"}]}",
+      "started_at": "2026-01-02T00:00:01",
+      "duration_ms": 100.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 3,
+      "session_id": "upstream-new-001",
+      "node_name": "lookup_refund_policy",
+      "execution_order": 3,
+      "input_state": "{\"order_date\": \"2025-12-15\"}",
+      "output_state": "{\"tool_calls\": [{\"tool_name\": \"policy_lookup\", \"output\": \"Refunds require documented proof of product defect within 14 days of purchase.\"}], \"eligible\": false}",
+      "started_at": "2026-01-02T00:00:02",
+      "duration_ms": 80.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 4,
+      "session_id": "upstream-new-001",
+      "node_name": "check_inventory",
+      "execution_order": 4,
+      "input_state": "{\"order_id\": 4471}",
+      "output_state": "{\"item_in_stock\": true, \"warehouse\": \"US-EAST\"}",
+      "started_at": "2026-01-02T00:00:03",
+      "duration_ms": 60.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 5,
+      "session_id": "upstream-new-001",
+      "node_name": "summarize_answer",
+      "execution_order": 5,
+      "input_state": "{\"eligible\": false, \"policy\": \"Orders under 30 days are eligible for refund only with proof of defect.\"}",
+      "output_state": "Refund denied for order #4471.",
+      "started_at": "2026-01-02T00:00:04",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    }
+  ]
+}

@@ -191,9 +191,9 @@ class TestWatchCLI:
             with open("report.json") as f:
                 report = json.load(f)
 
-            expected_top = {"baseline_run_id", "new_run_id", "regression_count", "structural_change_count", "has_regression", "findings"}
+            expected_top = {"baseline_run_id", "new_run_id", "regression_count", "structural_change_count", "has_regression", "diff_strategy", "findings"}
             assert set(report.keys()) == expected_top
 
-            expected_finding = {"step_id", "node_name", "judgment", "finding_type", "baseline_output", "new_output", "annotation_note"}
+            expected_finding = {"step_id", "node_name", "judgment", "finding_type", "baseline_output", "new_output", "annotation_note", "semantic_note", "upstream_divergences"}
             for finding in report["findings"]:
                 assert set(finding.keys()) == expected_finding

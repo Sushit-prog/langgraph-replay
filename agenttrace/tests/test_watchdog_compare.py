@@ -224,11 +224,161 @@ class TestCompareRuns:
 
         report = format_json_report(result)
 
-        # Top-level keys
-        expected_top = {"baseline_run_id", "new_run_id", "regression_count", "structural_change_count", "has_regression", "findings"}
+        # Top-level keys (includes diff_strategy from Phase 4)
+        expected_top = {"baseline_run_id", "new_run_id", "regression_count", "structural_change_count", "has_regression", "diff_strategy", "findings"}
         assert set(report.keys()) == expected_top
 
-        # Finding keys
-        expected_finding = {"step_id", "node_name", "judgment", "finding_type", "baseline_output", "new_output", "annotation_note"}
+        # Finding keys (includes semantic_note from Phase 4, upstream_divergences from Phase 5)
+        expected_finding = {"step_id", "node_name", "judgment", "finding_type", "baseline_output", "new_output", "annotation_note", "semantic_note", "upstream_divergences"}
         for f in report["findings"]:
             assert set(f.keys()) == expected_finding
+
+
+class TestSemanticMode:
+    """Phase 4: Semantic diff mode tests."""
+
+    def test_false_regression_in_exact_mode(self):
+        """1. false_regression_fixture -> regression flagged under exact mode (the false positive)."""
+        from agenttrace.loopdetect.embeddings import clear_cache
+        clear_cache()
+
+        ann_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        trace_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+
+        try:
+            ann_store = AnnotationStore(ann_db)
+            trace_store = ReplayStorage(trace_db)
+
+            fixture = _load_fixture("false_regression_fixture.json")
+
+            # Load baseline
+            s = fixture["baseline_session"]
+            trace_store.save_session(Session(
+                id=s["id"], agent_name=s["agent_name"], created_at=s["created_at"],
+                total_nodes=s["total_nodes"], status=s["status"],
+                final_output=s.get("final_output", ""), metadata=s.get("metadata", {})
+            ))
+            for e in fixture["baseline_executions"]:
+                trace_store.save_node_execution(NodeExecution(
+                    id=e["id"], session_id=e["session_id"], node_name=e["node_name"],
+                    execution_order=e["execution_order"], input_state=e.get("input_state", ""),
+                    output_state=e.get("output_state", ""), started_at=e.get("started_at", ""),
+                    duration_ms=e.get("duration_ms", 0.0), status=e.get("status", "success"),
+                    error_message=e.get("error_message"), llm_calls=e.get("llm_calls", 0)
+                ))
+            for a in fixture["baseline_annotations"]:
+                ann_store.save(Annotation(
+                    run_id=a["run_id"], step_id=a["step_id"],
+                    judgment=Judgment(a["judgment"]), note=a.get("note"), annotator=a.get("annotator")
+                ))
+
+            # Load new run
+            s2 = fixture["new_session"]
+            trace_store.save_session(Session(
+                id=s2["id"], agent_name=s2["agent_name"], created_at=s2["created_at"],
+                total_nodes=s2["total_nodes"], status=s2["status"],
+                final_output=s2.get("final_output", ""), metadata=s2.get("metadata", {})
+            ))
+            for e in fixture["new_executions"]:
+                trace_store.save_node_execution(NodeExecution(
+                    id=e["id"], session_id=e["session_id"], node_name=e["node_name"],
+                    execution_order=e["execution_order"], input_state=e.get("input_state", ""),
+                    output_state=e.get("output_state", ""), started_at=e.get("started_at", ""),
+                    duration_ms=e.get("duration_ms", 0.0), status=e.get("status", "success"),
+                    error_message=e.get("error_message"), llm_calls=e.get("llm_calls", 0)
+                ))
+
+            # Exact mode should flag regression
+            result = compare_runs(
+                baseline_run_id="false-reg-baseline-001",
+                new_run_id="false-reg-new-001",
+                annotation_store=ann_store,
+                trace_store=trace_store,
+                diff_strategy="exact",
+            )
+
+            assert result.has_regression
+            assert result.diff_strategy == "exact"
+
+        finally:
+            ann_store.close()
+            trace_store.close()
+            os.unlink(ann_db)
+            os.unlink(trace_db)
+
+    def test_false_regression_resolved_in_semantic_mode(self):
+        """2. Same fixture -> no regression under semantic mode (the fix)."""
+        from agenttrace.loopdetect.embeddings import clear_cache
+        clear_cache()
+
+        ann_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+        trace_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False).name
+
+        try:
+            ann_store = AnnotationStore(ann_db)
+            trace_store = ReplayStorage(trace_db)
+
+            fixture = _load_fixture("false_regression_fixture.json")
+
+            # Load baseline
+            s = fixture["baseline_session"]
+            trace_store.save_session(Session(
+                id=s["id"], agent_name=s["agent_name"], created_at=s["created_at"],
+                total_nodes=s["total_nodes"], status=s["status"],
+                final_output=s.get("final_output", ""), metadata=s.get("metadata", {})
+            ))
+            for e in fixture["baseline_executions"]:
+                trace_store.save_node_execution(NodeExecution(
+                    id=e["id"], session_id=e["session_id"], node_name=e["node_name"],
+                    execution_order=e["execution_order"], input_state=e.get("input_state", ""),
+                    output_state=e.get("output_state", ""), started_at=e.get("started_at", ""),
+                    duration_ms=e.get("duration_ms", 0.0), status=e.get("status", "success"),
+                    error_message=e.get("error_message"), llm_calls=e.get("llm_calls", 0)
+                ))
+            for a in fixture["baseline_annotations"]:
+                ann_store.save(Annotation(
+                    run_id=a["run_id"], step_id=a["step_id"],
+                    judgment=Judgment(a["judgment"]), note=a.get("note"), annotator=a.get("annotator")
+                ))
+
+            # Load new run
+            s2 = fixture["new_session"]
+            trace_store.save_session(Session(
+                id=s2["id"], agent_name=s2["agent_name"], created_at=s2["created_at"],
+                total_nodes=s2["total_nodes"], status=s2["status"],
+                final_output=s2.get("final_output", ""), metadata=s2.get("metadata", {})
+            ))
+            for e in fixture["new_executions"]:
+                trace_store.save_node_execution(NodeExecution(
+                    id=e["id"], session_id=e["session_id"], node_name=e["node_name"],
+                    execution_order=e["execution_order"], input_state=e.get("input_state", ""),
+                    output_state=e.get("output_state", ""), started_at=e.get("started_at", ""),
+                    duration_ms=e.get("duration_ms", 0.0), status=e.get("status", "success"),
+                    error_message=e.get("error_message"), llm_calls=e.get("llm_calls", 0)
+                ))
+
+            # Semantic mode should NOT flag regression
+            # Use threshold of 0.80 since similarity scores are ~0.82-0.83
+            result = compare_runs(
+                baseline_run_id="false-reg-baseline-001",
+                new_run_id="false-reg-new-001",
+                annotation_store=ann_store,
+                trace_store=trace_store,
+                diff_strategy="semantic",
+                semantic_threshold=0.80,
+            )
+
+            assert not result.has_regression
+            assert result.diff_strategy == "semantic"
+
+            # Verify semantic notes are attached
+            for f in result.findings:
+                if f.finding_type == FindingType.UNCHANGED and f.baseline_output != f.new_output:
+                    assert f.semantic_note is not None
+                    assert "similarity=" in f.semantic_note
+
+        finally:
+            ann_store.close()
+            trace_store.close()
+            os.unlink(ann_db)
+            os.unlink(trace_db)

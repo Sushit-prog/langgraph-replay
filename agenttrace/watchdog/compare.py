@@ -6,7 +6,9 @@ from typing import Optional
 
 from agenttrace.annotations.models import Judgment
 from agenttrace.annotations.store import AnnotationStore
+from agenttrace.watchdog.helpers import build_node_index, find_baseline_exec
 from agenttrace.watchdog.semantic_diff import DEFAULT_SEMANTIC_THRESHOLD, semantic_match
+from agenttrace.watchdog.upstream import UpstreamDivergence, find_upstream_divergence
 from langgraph_replay.storage import ReplayStorage
 
 
@@ -30,6 +32,7 @@ class Finding:
     new_output: Optional[str] = None
     annotation_note: Optional[str] = None
     semantic_note: Optional[str] = None  # Attached when semantic diff was used
+    upstream_divergences: list = field(default_factory=list)  # Phase 5: upstream analysis
 
 
 @dataclass
@@ -55,27 +58,14 @@ class ComparisonResult:
         return self.regression_count > 0
 
 
-def _build_node_index(executions: list) -> dict[tuple[str, int], object]:
-    """Build a lookup index from (node_name, occurrence_count) -> execution.
-
-    This allows matching baseline steps to new-run steps by node name.
-    If a node runs multiple times, the first occurrence gets count=1, second=2, etc.
-    This is the tiebreak rule: we match by node_name and occurrence order within the run.
-    """
-    node_counts: dict[str, int] = {}
-    index: dict[tuple[str, int], object] = {}
-    for exec in executions:
-        count = node_counts.get(exec.node_name, 0) + 1
-        node_counts[exec.node_name] = count
-        index[(exec.node_name, count)] = exec
-    return index
-
-
 def compare_runs(
     baseline_run_id: str,
     new_run_id: str,
     annotation_store: Optional[AnnotationStore] = None,
     trace_store: Optional[ReplayStorage] = None,
+    diff_strategy: str = "exact",
+    semantic_threshold: float = DEFAULT_SEMANTIC_THRESHOLD,
+    include_upstream_divergence: bool = False,
 ) -> ComparisonResult:
     """Compare a new run against a baseline using annotations as ground truth.
 
@@ -86,6 +76,14 @@ def compare_runs(
     Matching strategy: steps are matched by (node_name, occurrence_index) within
     the run's execution order. If a baseline node doesn't exist in the new run,
     it's reported as a structural_change (not a regression).
+
+    Args:
+        diff_strategy: "exact" for string equality (default), "semantic" for
+            embedding-based similarity comparison.
+        semantic_threshold: Threshold for semantic matching (default 0.90).
+            Only used when diff_strategy="semantic".
+        include_upstream_divergence: When True, for each regression finding,
+            analyze upstream steps to find divergent tool outputs and context.
 
     Returns ComparisonResult with findings for each annotated step.
     """
@@ -116,7 +114,7 @@ def compare_runs(
         new_execs = trace_store.get_node_executions(new_run_id)
 
         # Build index for the new run: (node_name, occurrence_index) -> execution
-        new_index = _build_node_index(new_execs)
+        new_index = build_node_index(new_execs)
 
         # Track occurrence counts as we iterate baseline (to match the index)
         baseline_counts: dict[str, int] = {}
@@ -126,7 +124,7 @@ def compare_runs(
             # Determine the occurrence index for this baseline step
             # Use the step's node_name as the match key (step_id is annotation-specific)
             # We need to find which baseline execution corresponds to this step_id
-            baseline_exec = _find_baseline_exec(ann, baseline_execs, baseline_counts)
+            baseline_exec = find_baseline_exec(ann, baseline_execs, baseline_counts)
 
             if baseline_exec is None:
                 # Can't find the corresponding execution — treat as structural change
@@ -162,10 +160,43 @@ def compare_runs(
             baseline_out = baseline_exec.output_state or ""
             new_out = new_exec.output_state or ""
 
-            if baseline_out == new_out:
-                finding_type = FindingType.UNCHANGED
+            if diff_strategy == "semantic":
+                # Use semantic comparison
+                sem_result = semantic_match(baseline_out, new_out, threshold=semantic_threshold)
+                if sem_result.is_match:
+                    finding_type = FindingType.UNCHANGED
+                    # Attach note explaining that raw strings differed but were
+                    # judged semantically equivalent — transparency matters more
+                    # than a clean "unchanged" label
+                    if baseline_out != new_out:
+                        semantic_note = (
+                            f"raw output text differs but judged equivalent "
+                            f"(similarity={sem_result.similarity_score:.2f})"
+                        )
+                    else:
+                        semantic_note = None
+                else:
+                    finding_type = FindingType.REGRESSION
+                    semantic_note = f"similarity={sem_result.similarity_score:.2f}"
             else:
-                finding_type = FindingType.REGRESSION
+                # Exact comparison (default, unchanged behavior)
+                if baseline_out == new_out:
+                    finding_type = FindingType.UNCHANGED
+                    semantic_note = None
+                else:
+                    finding_type = FindingType.REGRESSION
+                    semantic_note = None
+
+            # Phase 5: upstream divergence analysis for regressions
+            upstream_divs = []
+            if include_upstream_divergence and finding_type == FindingType.REGRESSION:
+                upstream_divs = find_upstream_divergence(
+                    baseline_executions=baseline_execs,
+                    new_executions=new_execs,
+                    regression_step_node_name=node_name,
+                    regression_step_execution_order=baseline_exec.execution_order,
+                    semantic_threshold=semantic_threshold,
+                )
 
             findings.append(Finding(
                 step_id=ann.step_id,
@@ -175,47 +206,18 @@ def compare_runs(
                 baseline_output=baseline_out,
                 new_output=new_out,
                 annotation_note=ann.note,
+                semantic_note=semantic_note,
+                upstream_divergences=upstream_divs,
             ))
 
         return ComparisonResult(
             baseline_run_id=baseline_run_id,
             new_run_id=new_run_id,
             findings=findings,
+            diff_strategy=diff_strategy,
+            semantic_threshold=semantic_threshold if diff_strategy == "semantic" else None,
         )
     finally:
         if own_stores:
             annotation_store.close()
             trace_store.close()
-
-
-def _find_baseline_exec(ann, baseline_execs: list, baseline_counts: dict) -> Optional[object]:
-    """Find the baseline execution that corresponds to an annotation's step_id.
-
-    The step_id in annotations may be:
-    - A node_name (common case)
-    - A custom identifier that maps to a node_name
-
-    We try to match by checking if step_id matches any node_name.
-    If multiple executions share a name, we use the occurrence counter.
-    """
-    # First try: step_id matches a node_name directly
-    for exec in baseline_execs:
-        if exec.node_name == ann.step_id:
-            return exec
-
-    # Second try: step_id is a substring of a node_name or vice versa
-    for exec in baseline_execs:
-        if ann.step_id in exec.node_name or exec.node_name in ann.step_id:
-            return exec
-
-    # Third try: use execution_order (step_id might be a numeric order)
-    try:
-        order = int(ann.step_id)
-        for exec in baseline_execs:
-            if exec.execution_order == order:
-                return exec
-    except (ValueError, TypeError):
-        pass
-
-    # No match found
-    return None
