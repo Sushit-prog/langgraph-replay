@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="2340" height="2664" alt="diagram (1)" src="https://github.com/user-attachments/assets/501ae3de-4aff-424a-82df-73f6c898899e" />
+  <img width="2816" height="1536" alt="Gemini_Generated_Image_9lk41v9lk41v9lk4" src="https://github.com/user-attachments/assets/06c36d91-4747-41d7-b04b-a2a5715b1a99" />
 </p>
 
 <h1 align="center">langgraph-replay + AgentTrace</h1>
