@@ -575,24 +575,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
-## FAQ
-
-**Q: Does this require LangSmith or any cloud service?**
-A: No. Everything runs locally. SQLite for storage, local embeddings for semantic comparison.
-
-**Q: Can I use this with non-LangGraph agents?**
-A: The recording layer is LangGraph-specific (uses LangChain callbacks). The analysis tools work on the recorded data format.
-
-**Q: How does counterfactual replay handle non-idempotent nodes?**
-A: It doesn't — this is a documented limitation. Nodes with side effects (payments, emails) should not be replayed without mocking.
-
-**Q: What if my graph definition changes between recording and replay?**
-A: `load_graph_for_run()` imports the current code. State shape mismatches will error loudly at `update_state()`.
-
-**Q: Can I use a different embedding model?**
-A: Yes — replace `agenttrace/loopdetect/embeddings.py`. The interface is `embed(text) → np.ndarray` and `cosine_similarity(a, b) → float`.
-
----
 
 <p align="center">
   Built with care for the LangGraph community.
