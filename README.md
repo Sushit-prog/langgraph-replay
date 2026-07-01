@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="1536" height="1024" alt="ChatGPT Image Jul 2, 2026, 02_03_23 AM" src="https://github.com/user-attachments/assets/41bcb0c6-4974-4ac8-aa03-e2cb31438d9b" />
+  <img width="2816" height="1536" alt="Gemini_Generated_Image_9lk41v9lk41v9lk4" src="https://github.com/user-attachments/assets/96794450-a0c2-47f4-962b-3f83d1a3b643" />
 </p>
 
 <h1 align="center">langgraph-replay + AgentTrace</h1>
