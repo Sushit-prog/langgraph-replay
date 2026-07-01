@@ -1,0 +1,78 @@
+{
+  "session": {
+    "id": "stuck-loop-run-001",
+    "agent_name": "weather-agent",
+    "created_at": "2026-01-01T00:00:00",
+    "total_nodes": 5,
+    "status": "failed",
+    "final_output": "",
+    "metadata": {}
+  },
+  "executions": [
+    {
+      "id": 1,
+      "session_id": "stuck-loop-run-001",
+      "node_name": "parse_query",
+      "execution_order": 1,
+      "input_state": "{\"query\": \"What is the weather in Paris?\"}",
+      "output_state": "{\"intent\": \"weather\", \"location\": \"Paris\"}",
+      "started_at": "2026-01-01T00:00:00",
+      "duration_ms": 50.0,
+      "status": "success",
+      "error_message": null,
+      "llm_calls": 0
+    },
+    {
+      "id": 2,
+      "session_id": "stuck-loop-run-001",
+      "node_name": "fetch_weather_api",
+      "execution_order": 2,
+      "input_state": "{\"location\": \"Paris\", \"api_key\": \"sk-123\"}",
+      "output_state": "{\"error\": \"rate_limited\", \"message\": \"Too many requests\"}",
+      "started_at": "2026-01-01T00:00:01",
+      "duration_ms": 200.0,
+      "status": "error",
+      "error_message": "rate_limited",
+      "llm_calls": 0
+    },
+    {
+      "id": 3,
+      "session_id": "stuck-loop-run-001",
+      "node_name": "fetch_weather_api",
+      "execution_order": 3,
+      "input_state": "{\"location\": \"Paris\", \"api_key\": \"sk-123\"}",
+      "output_state": "{\"error\": \"rate_limited\", \"message\": \"Too many requests\"}",
+      "started_at": "2026-01-01T00:00:03",
+      "duration_ms": 200.0,
+      "status": "error",
+      "error_message": "rate_limited",
+      "llm_calls": 0
+    },
+    {
+      "id": 4,
+      "session_id": "stuck-loop-run-001",
+      "node_name": "fetch_weather_api",
+      "execution_order": 4,
+      "input_state": "{\"location\": \"Paris\", \"api_key\": \"sk-123\"}",
+      "output_state": "{\"error\": \"rate_limited\", \"message\": \"Too many requests\"}",
+      "started_at": "2026-01-01T00:00:05",
+      "duration_ms": 200.0,
+      "status": "error",
+      "error_message": "rate_limited",
+      "llm_calls": 0
+    },
+    {
+      "id": 5,
+      "session_id": "stuck-loop-run-001",
+      "node_name": "fetch_weather_api",
+      "execution_order": 5,
+      "input_state": "{\"location\": \"Paris\", \"api_key\": \"sk-123\"}",
+      "output_state": "{\"error\": \"rate_limited\", \"message\": \"Too many requests\"}",
+      "started_at": "2026-01-01T00:00:07",
+      "duration_ms": 200.0,
+      "status": "error",
+      "error_message": "rate_limited",
+      "llm_calls": 0
+    }
+  ]
+}

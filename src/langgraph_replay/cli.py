@@ -16,6 +16,7 @@ from langgraph_replay.storage import ReplayStorage
 
 from agenttrace.annotations.cli import annotate
 from agenttrace.watchdog.cli import baseline, watchdog
+from agenttrace.loopdetect.cli import loopcheck
 
 console = Console()
 
@@ -35,6 +36,7 @@ def main() -> None:
 main.add_command(annotate)
 main.add_command(watchdog)
 main.add_command(baseline)
+main.add_command(loopcheck)
 
 
 @main.command()

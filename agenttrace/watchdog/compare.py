@@ -1,11 +1,12 @@
 """Core comparison logic: diff new run against baseline, using annotations as ground truth."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
 from agenttrace.annotations.models import Judgment
 from agenttrace.annotations.store import AnnotationStore
+from agenttrace.watchdog.semantic_diff import DEFAULT_SEMANTIC_THRESHOLD, semantic_match
 from langgraph_replay.storage import ReplayStorage
 
 
@@ -28,6 +29,7 @@ class Finding:
     baseline_output: Optional[str] = None
     new_output: Optional[str] = None
     annotation_note: Optional[str] = None
+    semantic_note: Optional[str] = None  # Attached when semantic diff was used
 
 
 @dataclass
@@ -37,6 +39,8 @@ class ComparisonResult:
     baseline_run_id: str
     new_run_id: str
     findings: list[Finding]
+    diff_strategy: str = "exact"  # "exact" or "semantic"
+    semantic_threshold: Optional[float] = None  # Only set when diff_strategy="semantic"
 
     @property
     def regression_count(self) -> int:
