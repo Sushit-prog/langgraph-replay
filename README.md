@@ -1,5 +1,5 @@
 # langgraph-replay
-
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Sushit-prog/langgraph-replay)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-60_passing-success)]()
